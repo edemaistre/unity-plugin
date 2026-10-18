@@ -50,7 +50,9 @@ namespace Scenario.Editor
                 if (info.Cu > 0) meta.Add(Ui.Cu(info.Cu));
                 if (System.DateTime.TryParse(info.CreatedAt, out var created)) meta.Add(created.ToLocalTime().ToString("d MMM yyyy, HH:mm"));
                 if (info.Role.Length > 0 && info.Role != "main") meta.Add(info.Role);
-                EditorGUILayout.LabelField(title, meta.Count > 0 ? string.Join(" · ", meta) : "", EditorStyles.boldLabel);
+                // Two lines: a long model name in the label column would run under the cost.
+                EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+                if (meta.Count > 0) EditorGUILayout.LabelField(string.Join(" · ", meta), EditorStyles.miniLabel);
                 if (info.Prompt.Length > 0 && !info.Prompt.StartsWith("asset_")) EditorGUILayout.LabelField(info.Prompt, _prompt);
                 using (new EditorGUILayout.HorizontalScope())
                 {

@@ -39,6 +39,7 @@ namespace Scenario.Editor.UI
         static VisualElement Control(Field field, JObject values, Action changed)
         {
             var value = values[field.Name];
+            if (MotionLibrary.IsActionField(field) && MotionLibrary.All.Count > 0) return MotionPicker(field, values, changed);
             switch (field.Type)
             {
                 case FieldType.Enum:
@@ -185,6 +186,113 @@ namespace Scenario.Editor.UI
                 Set(values, field.Name, new JArray(items), changed);
             });
             return text;
+        }
+
+        /// <summary>
+        /// Meshy's motion library by name instead of by number: the current motion, and a
+        /// search with category chips over the 656 motions.
+        /// </summary>
+        static VisualElement MotionPicker(Field field, JObject values, Action changed)
+        {
+            var box = new VisualElement { name = "motion-picker" };
+            var current = Ui.Button("Motion", null, null, "sc-btn-outline", "sc-btn-sm");
+            current.name = "motion-current";
+            current.tooltip = "Meshy's motion library. The number sent is the motion's id.";
+            current.Add(Ui.Icon("chevron-down", "sc-icon-sm"));
+            current.style.alignSelf = Align.FlexStart;
+            box.Add(current);
+            var panel = new VisualElement { name = "motion-panel" };
+            panel.style.display = DisplayStyle.None;
+            panel.style.marginTop = 4;
+            box.Add(panel);
+
+            var category = "";
+            var query = "";
+            var results = new List<MotionLibrary.Motion>();
+            void ShowCurrent()
+            {
+                var id = values[field.Name] != null ? (int)Math.Round(Json.ToDouble(values[field.Name])) : 0;
+                var motion = MotionLibrary.Find(id);
+                Ui.SetButtonText(current, motion != null ? $"{motion.Name} · {motion.Group}" : $"Motion #{id}");
+            }
+
+            var list = new ListView { name = "motion-list", fixedItemHeight = 26, selectionType = SelectionType.Single };
+            list.style.height = 200;
+            list.makeItem = () =>
+            {
+                var row = new VisualElement();
+                row.AddToClassList("sc-row");
+                row.style.paddingLeft = 6;
+                var name = new Label { name = "name" };
+                name.style.flexGrow = 1;
+                row.Add(name);
+                row.Add(Ui.Text("", "sc-dim", "sc-small"));
+                return row;
+            };
+            list.bindItem = (element, i) =>
+            {
+                var motion = results[i];
+                element.Q<Label>("name").text = motion.Name;
+                ((Label)element[1]).text = motion.Group;
+            };
+            list.selectionChanged += picked =>
+            {
+                if (!(picked.FirstOrDefault() is MotionLibrary.Motion motion)) return;
+                values[field.Name] = motion.Id;
+                ShowCurrent();
+                panel.style.display = DisplayStyle.None;
+                changed();
+            };
+            void Filter()
+            {
+                results = MotionLibrary.Search(query, category);
+                list.itemsSource = results;
+                list.SetSelectionWithoutNotify(new int[0]);
+                list.Rebuild();
+            }
+
+            var search = Ui.Search($"Search {MotionLibrary.All.Count} motions: walk, punch, dance", text =>
+            {
+                query = text;
+                Filter();
+            });
+            search.name = "motion-search";
+            panel.Add(search);
+            var chips = new VisualElement();
+            chips.AddToClassList("sc-row-wrap");
+            chips.style.marginTop = 4;
+            void DrawChips()
+            {
+                chips.Clear();
+                foreach (var name in new[] { "" }.Concat(MotionLibrary.Categories))
+                {
+                    var c = name;
+                    chips.Add(Ui.Chip(c.Length == 0 ? "All" : c, null, c == category, () =>
+                    {
+                        category = c;
+                        DrawChips();
+                        Filter();
+                    }, "sc-chip-sm"));
+                }
+            }
+            DrawChips();
+            panel.Add(chips);
+            panel.Add(list);
+
+            current.clicked += () =>
+            {
+                var open = panel.style.display == DisplayStyle.None;
+                panel.style.display = open ? DisplayStyle.Flex : DisplayStyle.None;
+                if (open)
+                {
+                    Filter();
+                    search.Focus();
+                    // At the bottom of a long form the panel opens out of sight: bring it in once laid out.
+                    panel.schedule.Execute(() => panel.GetFirstAncestorOfType<ScrollView>()?.ScrollTo(panel)).ExecuteLater(50);
+                }
+            };
+            ShowCurrent();
+            return box;
         }
 
         /// <summary>Splits fields for the form: essentials and the rest ("More settings").</summary>

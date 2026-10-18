@@ -46,6 +46,45 @@ namespace Scenario.Editor.Core
             }
         }
 
+        static string Mime(JObject asset)
+        {
+            var mime = Json.Str(asset, "mimeType");
+            if (mime.Length == 0) mime = Json.Str(asset?["metadata"], "mimeType");
+            return mime.ToLowerInvariant();
+        }
+
+        /// <summary>
+        /// Copies a 3D result carries next to its model: OBJ and MTL versions and the PBR
+        /// maps (metadata.type "3d-texture-*"). The GLB already holds them, so they are not imported.
+        /// </summary>
+        public static bool IsModelCompanion(JObject asset)
+        {
+            var type = Json.Str(asset?["metadata"], "type");
+            var mime = Mime(asset);
+            return type.StartsWith("3d-texture") || mime == "model/obj" || mime == "model/mtl";
+        }
+
+        /// <summary>A 3D property Scenario measured (boneCount, materialCount...), from properties or metadata.</summary>
+        public static JToken ModelProperty(JObject asset, string name) => asset?["properties"]?[name] ?? asset?["metadata"]?[name];
+
+        public static int BoneCount(JObject asset) => (int)Json.ToDouble(ModelProperty(asset, "boneCount"));
+
+        /// <summary>
+        /// A skeleton preview (Meshy Rigging returns its walk and run on a bare armature
+        /// too): bones, no material, no UVs. The textured files carry the same clips.
+        /// </summary>
+        public static bool IsSkeletonOnly(JObject asset) =>
+            Json.Truthy(ModelProperty(asset, "hasSkeleton")) && ModelProperty(asset, "materialCount") != null
+            && Json.ToDouble(ModelProperty(asset, "materialCount")) == 0 && !Json.Truthy(ModelProperty(asset, "hasUVs"));
+
+        /// <summary>Gaussian splats (.spz, .ply from the splat models): Unity has no importer for them.</summary>
+        public static bool IsSplat(JObject asset)
+        {
+            var mime = Mime(asset);
+            var type = Json.Str(asset?["metadata"], "type");
+            return mime == "model/spz" || mime.Contains("splat") || type.Contains("splat") || (mime.Contains("ply") && type.Contains("2splat"));
+        }
+
         /// <summary>The asset kind Scenario reports: image, video, audio, 3d, document, json...</summary>
         public static string KindOf(JObject asset)
         {
@@ -161,6 +200,7 @@ namespace Scenario.Editor.Core
             if (head.Length >= 4 && head[0] == 0x1A && head[1] == 0x45 && head[2] == 0xDF && head[3] == 0xA3) return "webm";
             if (Ascii(0, "Kaydara FBX Binary")) return "fbx";
             if (Ascii(0, "PK")) return "zip";
+            if (Ascii(0, "ply\n") || Ascii(0, "ply\r")) return "ply";
             if (Ascii(0, "<svg") || Ascii(0, "<?xml")) return "svg";
             if (head.Length >= 1 && head[0] == 0x7B) return "json";
             return "";
@@ -209,6 +249,10 @@ namespace Scenario.Editor.Core
                 case "model/gltf+json": return "gltf";
                 case "model/x-fbx": return "fbx";
                 case "model/obj": return "obj";
+                case "model/spz": return "spz";
+                case "model/ply":
+                case "application/ply": return "ply";
+                case "model/x-3d-vox": return "vox";
                 case "audio/mpeg":
                 case "audio/mp3": return "mp3";
                 case "audio/wav":

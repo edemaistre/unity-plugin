@@ -4,6 +4,7 @@ using System.Linq;
 using Scenario.Editor.Core;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.Video;
 
@@ -14,6 +15,8 @@ namespace Scenario.Editor
         public List<GameObject> Objects = new List<GameObject>();
         public Object Asset;
         public string Message = "";
+        /// <summary>"warning" when something did not land, "info" for a tip.</summary>
+        public string MessageKind = "warning";
     }
 
     /// <summary>
@@ -55,7 +58,13 @@ namespace Scenario.Editor
             switch (outputType)
             {
                 case OutputTypes.Model3D:
-                    if (create || target != null) PlaceModel(main.Path, name, target, result);
+                case OutputTypes.Motion:
+                    if (main.Kind == "splat")
+                    {
+                        result.Asset = AssetDatabase.LoadMainAssetAtPath(main.Path);
+                        result.Message = "Gaussian splat saved. Unity needs a Gaussian splat renderer package to show it.";
+                    }
+                    else if (create || target != null) PlaceModel(main.Path, name, target, result);
                     break;
                 case OutputTypes.Image:
                     PlaceImage(main.Path, name, target, create, result);
@@ -76,7 +85,7 @@ namespace Scenario.Editor
                     break;
                 default:
                     // "All models": land by the asset's own kind.
-                    var kindType = main.Kind == "3d" ? OutputTypes.Model3D : OutputTypes.TypeForKind(main.Kind);
+                    var kindType = main.Kind == "3d" || main.Kind == "splat" ? OutputTypes.Model3D : OutputTypes.TypeForKind(main.Kind);
                     if (kindType != OutputTypes.All) return Place(kindType, files, prompt, target, create);
                     break;
             }
@@ -149,12 +158,30 @@ namespace Scenario.Editor
             }
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
             instance.name = name;
+            var notes = new List<string>();
+            // glTF is in meters; a character tens of meters tall was exported in centimeters.
+            if (instance.GetComponentInChildren<SkinnedMeshRenderer>() != null && Bounds(instance).size.y > 50)
+            {
+                instance.transform.localScale *= 0.01f;
+                notes.Add("Scaled to 1%: the file is in centimeters.");
+            }
+            // Untextured results can come without a material, which Unity draws magenta.
+            var fallback = GraphicsSettings.currentRenderPipeline != null ? GraphicsSettings.currentRenderPipeline.defaultMaterial : AssetDatabase.GetBuiltinExtraResource<Material>("Default-Material.mat");
+            foreach (var renderer in instance.GetComponentsInChildren<Renderer>())
+                if (fallback != null && renderer.sharedMaterials.All(m => m == null))
+                    renderer.sharedMaterials = Enumerable.Repeat(fallback, Mathf.Max(1, renderer.sharedMaterials.Length)).ToArray();
             var position = target != null ? target.transform.position + Vector3.right * Size(target) : Pivot();
             instance.transform.position = position;
             // Sit the model on the point instead of around it.
             var bounds = Bounds(instance);
             if (bounds.size != Vector3.zero) instance.transform.position += Vector3.up * (position.y - bounds.min.y);
             Undo.RegisterCreatedObjectUndo(instance, "Place Scenario model");
+            if (Animations.Attach(instance, path) != null)
+            {
+                notes.Add("Animated: press Play to see it move.");
+                result.MessageKind = "info";
+            }
+            if (notes.Count > 0) result.Message = string.Join(" ", notes);
             if (ScenarioProjectSettings.instance.AddCollider)
                 foreach (var filter in instance.GetComponentsInChildren<MeshFilter>())
                     if (filter.sharedMesh != null && filter.GetComponent<Collider>() == null)

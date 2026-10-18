@@ -176,7 +176,7 @@ namespace Scenario.Editor.Agent
                     Description = "Find Scenario models. Search the catalog by text, output type and capability, or pass recommend_for_prompt to get Scenario's ranked recommendation with cost and speed notes.",
                     Schema = Schema(None,
                         ("query", Str("Words to match: name, provider, style.")),
-                        ("output_type", Str("image, video, model3d, audio, material, skybox or all.", Types)),
+                        ("output_type", Str("image, video, model3d, motion, audio, material, skybox or all.", Types)),
                         ("capability", Str("txt2img, img2img, txt2video, img2video, video2video, txt23d, img23d, 3d23d, txt2audio, audio2audio, video2audio.")),
                         ("recommend_for_prompt", Str("A prompt: returns Scenario's ranked picks for it (free).")),
                         ("include_legacy", Bool("Include deprecated models.")),
@@ -234,6 +234,16 @@ namespace Scenario.Editor.Agent
                     Description = "Lists Scenario workflows: the team's own, or featured public ones, with their inputs.",
                     Schema = Schema(None, ("query", Str("Words to match.")), ("scope", Str("team or featured (default featured).", "team", "featured"))),
                     Run = WorkflowsFind,
+                },
+                new Tool
+                {
+                    Name = "motions_find", ReadOnly = true,
+                    Description = "Searches Meshy's motion library (walks, runs, attacks, dances, idles...). Pass a motion's id as actionId to model_meshy-animation. Free, works offline.",
+                    Schema = Schema(None,
+                        ("query", Str("Words to match in the motion's name or group, e.g. sword attack.")),
+                        ("category", Str("Walk and run, Daily actions, Fighting, Body movements or Dancing; empty searches all.")),
+                        ("limit", Int("Max results, default 20."))),
+                    Run = MotionsFind,
                 },
                 new Tool
                 {
@@ -370,7 +380,7 @@ namespace Scenario.Editor.Agent
                 {
                     Name = "capture_view", ReadOnly = true,
                     Description = "Renders the Scene view, the main camera or a given camera and returns the image, so you can see the result. Optionally uploads it to Scenario as a reference.",
-                    Schema = Schema(None, ("source", Str("scene_view, main_camera, or a camera's hierarchy path (default main_camera, then scene_view).")),
+                    Schema = Schema(None, ("source", Str("scene_view, main_camera, or a camera's hierarchy path (default main_camera, then scene_view, then an overview of the open scenes).")),
                         ("max_size", Int("Longest side in pixels, default 768.")), ("upload", Bool("Also upload to Scenario and return the asset id."))),
                     Run = CaptureView,
                 },
@@ -549,8 +559,8 @@ namespace Scenario.Editor.Agent
             if (unknown.Count > 0)
                 throw new ToolError($"Unknown {(workflow ? "inputs" : "parameters")}: {string.Join(", ", unknown)}. Accepted: {string.Join(", ", fields.Select(f => f.Name))}.");
             foreach (var property in parameters.Properties()) values[property.Name] = property.Value;
-            foreach (var field in fields.Where(f => f.IsFile && values[f.Name] != null)) values[field.Name] = await UploadPaths(values[field.Name]);
-            var problems = SchemaForm.Validate(fields, values);
+            foreach (var field in fields.Where(f => f.IsFile && values[f.Name] != null)) values[field.Name] = await UploadPaths(values[field.Name], SchemaForm.RequiredModelFormat(field));
+            var problems = SchemaForm.Validate(fields, values, workflow ? "" : id);
             if (problems.Count > 0) throw new ToolError(string.Join(" ", problems));
             var canPlace = ScenarioUserSettings.instance.AgentCanEditScene;
             var targetPath = S_(args, "target");
@@ -573,10 +583,21 @@ namespace Scenario.Editor.Agent
             };
         }
 
-        /// <summary>File inputs: Unity asset paths and absolute paths become Scenario asset ids.</summary>
-        static async Task<JToken> UploadPaths(JToken value)
+        /// <summary>
+        /// File inputs: Unity asset paths and absolute paths become Scenario asset ids, in
+        /// the 3D format the input requires when it is not GLB.
+        /// </summary>
+        static async Task<JToken> UploadPaths(JToken value, string format = "")
         {
             async Task<JToken> One(JToken item)
+            {
+                var id = await Resolve(item);
+                if (format.Length == 0 || !(id?.ToString() ?? "").StartsWith("asset_")) return id;
+                var converted = await S.Convert(id.ToString(), format);
+                if (!converted.Ok) throw new ToolError(converted.Error.Message);
+                return converted.Value;
+            }
+            async Task<JToken> Resolve(JToken item)
             {
                 var text = item?.ToString() ?? "";
                 if (text.StartsWith("asset_")) return text;
@@ -731,6 +752,18 @@ namespace Scenario.Editor.Agent
                     ["output_kinds"] = w["outputAssetKinds"],
                 });
             return Ok(new JObject { ["workflows"] = new JArray(list) });
+        }
+
+        static Task<JObject> MotionsFind(JObject args, Context context)
+        {
+            var limit = Math.Max(1, Math.Min(100, I_(args, "limit", 20)));
+            var found = MotionLibrary.Search(S_(args, "query"), S_(args, "category"));
+            return Task.FromResult(Ok(new JObject
+            {
+                ["total"] = found.Count,
+                ["motions"] = new JArray(found.Take(limit).Select(m => new JObject { ["id"] = m.Id, ["name"] = m.Name, ["category"] = m.Category, ["group"] = m.Group })),
+                ["categories"] = new JArray(MotionLibrary.Categories),
+            }));
         }
 
         static async Task<JObject> ImportAsset(JObject args, Context context)
@@ -1267,15 +1300,15 @@ namespace Scenario.Editor.Agent
             var source = S_(args, "source", "main_camera");
             var size = Math.Max(128, Math.Min(2048, I_(args, "max_size", 768)));
             string path;
-            if (source == "scene_view") path = Capture.SceneView(size);
-            else if (source == "main_camera") path = Capture.MainCamera(size) ?? Capture.SceneView(size);
+            if (source == "scene_view") path = Capture.SceneView(size) ?? Capture.Overview(size);
+            else if (source == "main_camera") path = Capture.MainCamera(size) ?? Capture.SceneView(size) ?? Capture.Overview(size);
             else
             {
                 var camera = Find(source).GetComponent<Camera>();
                 if (camera == null) throw new ToolError($"{source} has no Camera.");
                 path = Capture.Render(camera, 16, 9, size, "camera");
             }
-            if (path == null) throw new ToolError("Nothing to capture: no camera tagged MainCamera and no Scene view.");
+            if (path == null) throw new ToolError("Nothing to capture: the render failed.");
             var png = File.ReadAllBytes(path);
             var data = new JObject { ["file"] = path };
             if (B_(args, "upload", false))

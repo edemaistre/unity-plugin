@@ -128,6 +128,7 @@ namespace Scenario.Editor
         internal static ScenarioService UseForTests(ITransport transport, string folder)
         {
             ResetForTests();
+            Uploader.CachePath = System.IO.Path.Combine(folder, "uploads.json");
             var credentials = new CredentialStore(System.IO.Path.Combine(folder, "credentials.json"), new MemorySecretStore());
             _instance = new ScenarioService(transport, credentials, System.IO.Path.Combine(folder, "jobs.json"), System.IO.Path.Combine(folder, "catalog.json"), readEnvironment: false);
             return _instance;
@@ -136,6 +137,7 @@ namespace Scenario.Editor
         /// <summary>Tests: drops the shared service; the next use builds the real one.</summary>
         internal static void ResetForTests()
         {
+            Uploader.ResetCachePath();
             if (_instance == null) return;
             EditorApplication.update -= _instance.Tick;
             _instance = null;
@@ -662,7 +664,7 @@ namespace Scenario.Editor
                     var target = ResolveTarget(row);
                     var placed = Placer.Place(row.OutputType, imported.Value, row.Prompt, target, create: true);
                     row.Placed = placed.Objects.Select(Placer.PathOf).ToList();
-                    if (placed.Message.Length > 0) Notify(placed.Message, "warning");
+                    if (placed.Message.Length > 0) Notify(placed.Message, placed.MessageKind);
                     Ledger.Save();
                 }
                 Finish(row);
@@ -700,7 +702,7 @@ namespace Scenario.Editor
             if (imported.Ok && place)
             {
                 var placed = Placer.Place(outputType, imported.Value, prompt, target, create: true);
-                if (placed.Message.Length > 0) Notify(placed.Message, "warning");
+                if (placed.Message.Length > 0) Notify(placed.Message, placed.MessageKind);
             }
             return imported;
         }
@@ -708,6 +710,9 @@ namespace Scenario.Editor
         public Task<Result<string>> Upload(UnityEngine.Object asset) => Uploader.UploadAsset(Client, asset);
 
         public Task<Result<string>> UploadPath(string path) => Uploader.UploadFile(Client, path);
+
+        /// <summary>The same 3D asset in another format (free), for inputs that refuse GLB.</summary>
+        public Task<Result<string>> Convert(string assetId, string format) => Uploader.Convert(Client, assetId, format);
 
         // --- Suggestions and Prompt Spark -------------------------------------
 

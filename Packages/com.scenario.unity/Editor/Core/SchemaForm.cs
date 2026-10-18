@@ -56,7 +56,26 @@ namespace Scenario.Editor.Core
         {
             "aspectRatio", "aspect_ratio", "numOutputs", "num_outputs", "duration", "resolution", "quality", "style", "background",
             "audioFormat", "outputFormat", "topology", "loop",
+            // 3D operations: the choice that defines the result.
+            "actionId", "animation", "rigType", "targetPolycount", "faceLimit", "quad", "polygonType", "segmentationGranularity", "moveInPlace",
         };
+
+        /// <summary>
+        /// The 3D format a file input insists on when it does not take GLB, from its
+        /// description ("Supported format: FBX"). The plugin converts the asset first.
+        /// </summary>
+        public static string RequiredModelFormat(Field field)
+        {
+            if (field == null || !string.Equals(field.Kind, "3d", StringComparison.OrdinalIgnoreCase)) return "";
+            var text = field.Description ?? "";
+            if (text.IndexOf("GLB", StringComparison.OrdinalIgnoreCase) >= 0) return "";
+            var at = text.IndexOf("format", StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return "";
+            var tail = text.Substring(at);
+            if (tail.IndexOf("FBX", StringComparison.OrdinalIgnoreCase) >= 0) return "fbx";
+            if (tail.IndexOf("OBJ", StringComparison.OrdinalIgnoreCase) >= 0) return "obj";
+            return "";
+        }
 
         public static List<Field> FieldsFromSchema(JObject schema, IDictionary<string, JToken[]> restrict = null)
         {
@@ -200,7 +219,7 @@ namespace Scenario.Editor.Core
         }
 
         /// <summary>Problems that block a price check, as short sentences. Empty means valid.</summary>
-        public static List<string> Validate(IEnumerable<Field> fields, JObject values)
+        public static List<string> Validate(IEnumerable<Field> fields, JObject values, string modelId = "")
         {
             var problems = new List<string>();
             foreach (var field in fields)
@@ -238,6 +257,14 @@ namespace Scenario.Editor.Core
                             problems.Add($"{field.Label} takes at most {field.MaxItems} items.");
                         break;
                 }
+            }
+            // Inputs the schema marks optional but Scenario needs to price this model.
+            foreach (var need in OutputTypes.Needs(modelId))
+            {
+                if (!fields.Any(f => need.Fields.Contains(f.Name))) continue;
+                if (need.Unless.Length > 0 && values?[need.Unless] is JValue off && off.Type == JTokenType.Boolean && !(bool)off) continue;
+                if (need.Fields.Any(n => !Json.IsEmpty(values?[n]))) continue;
+                problems.Add(need.Message);
             }
             return problems;
         }
@@ -303,7 +330,13 @@ namespace Scenario.Editor.Core
             {
                 var s = (string)option;
                 if (s.Length == 0) return "None";
-                return s;
+                // "biped:walk" reads "Biped walk", "change_fps" reads "Change fps"; "16:9" stays.
+                var colon = s.IndexOf(':');
+                if (colon > 0 && colon < s.Length - 1 && char.IsLetter(s[colon - 1]) && char.IsLetter(s[colon + 1]))
+                    s = s.Replace(':', ' ');
+                else if (!s.Contains('_')) return s;
+                s = s.Replace('_', ' ');
+                return char.ToUpperInvariant(s[0]) + s.Substring(1);
             }
             if (option.Type == JTokenType.Integer || option.Type == JTokenType.Float)
             {

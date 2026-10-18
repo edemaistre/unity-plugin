@@ -79,7 +79,7 @@ namespace Scenario.Editor.UI
                 actions.Add(Ui.IconButton("pin", "Place in the scene", () =>
                 {
                     var placed = Placer.Place(row.OutputType, files, row.Prompt, PlaceTarget(row.OutputType), create: true);
-                    if (placed.Message.Length > 0) window.Toast(placed.Message, "warning");
+                    if (placed.Message.Length > 0) window.Toast(placed.Message, placed.MessageKind);
                 }));
                 if (OutputTypes.StepsFor(main.Kind).Any())
                 {
