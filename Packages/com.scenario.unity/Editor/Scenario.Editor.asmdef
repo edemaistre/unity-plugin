@@ -1,0 +1,23 @@
+{
+    "name": "Scenario.Editor",
+    "rootNamespace": "Scenario.Editor",
+    "references": [
+        "glTFast",
+        "glTFast.Editor",
+        "glTFast.Export",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Newtonsoft.Json.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
