@@ -37,8 +37,9 @@ namespace Scenario.Editor.UI
 
         static async Task Apply(VisualElement target, string key, string url)
         {
+            // A thumbnail cached on disk arrives before the new tile is in the window: set it anyway.
             var texture = await Get(key, url);
-            if (texture != null && target.panel != null) target.style.backgroundImage = new StyleBackground(texture);
+            if (texture != null) target.style.backgroundImage = new StyleBackground(texture);
         }
 
         public static Task<Texture2D> Get(string key, string url)
@@ -114,10 +115,21 @@ namespace Scenario.Editor.UI
             }
         }
 
-        /// <summary>Preview of an imported Unity asset (AssetPreview), polled until ready.</summary>
+        static bool _previewCache;
+
+        /// <summary>
+        /// Preview of an imported Unity asset (AssetPreview), polled until ready, for up to a minute: after
+        /// a large import Unity renders previews one by one. The preview cache is raised so the window's
+        /// cards are not evicted by the Project window's tiles.
+        /// </summary>
         public static void LoadAsset(VisualElement target, UnityEngine.Object asset)
         {
             if (asset == null) return;
+            if (!_previewCache)
+            {
+                AssetPreview.SetPreviewTextureCacheSize(256);
+                _previewCache = true;
+            }
             var preview = AssetPreview.GetAssetPreview(asset);
             if (preview != null)
             {
@@ -132,7 +144,7 @@ namespace Scenario.Editor.UI
                 var ready = AssetPreview.GetAssetPreview(asset);
                 if (ready != null) target.style.backgroundImage = new StyleBackground(ready);
                 tries++;
-            }).Every(250).Until(() => tries > 40 || AssetPreview.GetAssetPreview(asset) != null && tries > 0);
+            }).Every(250).Until(() => tries > 240 || asset == null || AssetPreview.GetAssetPreview(asset) != null && tries > 0);
         }
     }
 }

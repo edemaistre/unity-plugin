@@ -235,6 +235,7 @@ namespace Scenario.Editor.Core
                 case "txt23d": return "Text to 3D";
                 case "img23d": return "Image to 3D";
                 case "3d23d": return "3D to 3D";
+                case "video23d": return "Video to motion";
                 case "txt2audio": return "Text to audio";
                 case "audio2audio": return "Audio to audio";
                 case "video2audio": return "Video to audio";

@@ -35,8 +35,15 @@ namespace Scenario.Editor.Tests
             _folder = "Assets/ScenarioTestTmp-" + Guid.NewGuid().ToString("N").Substring(0, 8);
             _server = new FakeMcp();
             _server.Tools["asset_get"] = (args, i) => FakeMcp.Result(new JObject { ["asset"] = _assets[(string)args["asset_id"]].asset });
-            _server.Tools["asset_download"] = (args, i) => FakeMcp.Result(new JObject { ["url"] = "https://cdn.cloud.scenario.com/assets/" + (string)args["asset_id"] });
-            _server.DownloadContent = url => _assets[url.Substring(url.LastIndexOf('/') + 1)].bytes;
+            _server.Tools["asset_download"] = (args, i) => FakeMcp.Result(new JObject
+            {
+                ["url"] = "https://cdn.cloud.scenario.com/assets/" + (string)args["asset_id"] + (args["format"] != null ? "?format=" + (string)args["format"] : ""),
+            });
+            _server.DownloadContent = url =>
+            {
+                var id = url.Substring(url.LastIndexOf('/') + 1).Split('?')[0];
+                return url.Contains("?format=") && _converted.TryGetValue(id, out var converted) ? converted : _assets[id].bytes;
+            };
             _client = new McpClient(_server, new ApiKeyAuth("key_test", "secret_test"));
         }
 
@@ -50,12 +57,22 @@ namespace Scenario.Editor.Tests
 
         // --- Test files ------------------------------------------------------------------
 
-        void Serve(string id, string kind, string mime, byte[] bytes, string type = "")
+        void Serve(string id, string kind, string mime, byte[] bytes, string type = "", JObject properties = null, string parent = "")
         {
             var asset = new JObject { ["id"] = id, ["mimeType"] = mime, ["kind"] = kind, ["metadata"] = new JObject { ["kind"] = kind } };
             if (type.Length > 0) asset["metadata"]["type"] = type;
+            if (parent.Length > 0) asset["metadata"]["parentId"] = parent;
+            if (properties != null) asset["properties"] = properties;
             _assets[id] = (asset, bytes);
         }
+
+        /// <summary>What Scenario returns when the asset is downloaded in another format.</summary>
+        readonly Dictionary<string, byte[]> _converted = new Dictionary<string, byte[]>();
+
+        static JObject Rig(int bones, bool textured = true) => new JObject
+        {
+            ["hasSkeleton"] = true, ["boneCount"] = bones, ["materialCount"] = textured ? 1 : 0, ["hasUVs"] = textured,
+        };
 
         static byte[] Png(int width, int height, Color color)
         {
@@ -92,16 +109,52 @@ namespace Scenario.Editor.Tests
             }
         }
 
-        /// <summary>A binary glTF with one triangle.</summary>
-        static byte[] Glb()
+        /// <summary>
+        /// A binary glTF with one triangle; animated, the triangle rises one unit in a second.
+        /// Wrapped, the triangle sits under a "scene" node, as in Tripo's rigs. Z-up, its node is turned
+        /// 90 degrees to stand up, as in converted FBX results and Uthana rigs.
+        /// </summary>
+        static byte[] Glb(bool animated = false, bool wrapped = false, bool zUp = false)
         {
-            var positions = new float[] { 0, 0, 0, 1, 0, 0, 0, 1, 0 };
-            var bin = new byte[positions.Length * 4];
-            Buffer.BlockCopy(positions, 0, bin, 0, bin.Length);
-            var json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0,\"name\":\"Triangle\"}]," +
+            var data = new List<float> { 0, 0, 0, 1, 0, 0, 0, 1, 0 };
+            if (animated) data.AddRange(new float[] { 0, 1, 0, 0, 0, 0, 1, 0 }); // times 0 and 1, then translations (0,0,0) and (0,1,0)
+            var bin = new byte[data.Count * 4];
+            Buffer.BlockCopy(data.ToArray(), 0, bin, 0, bin.Length);
+            var nodes = wrapped ? "[{\"name\":\"scene\",\"children\":[1]},{\"mesh\":0,\"name\":\"Triangle\"}]"
+                : zUp ? "[{\"mesh\":0,\"name\":\"Triangle\",\"rotation\":[0.7071068,0,0,0.7071068]}]" : "[{\"mesh\":0,\"name\":\"Triangle\"}]";
+            var json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":" + nodes + "," +
                        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}]," +
-                       "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,0]}]," +
-                       "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36}],\"buffers\":[{\"byteLength\":36}]}";
+                       "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,0]}" +
+                       (animated
+                           ? ",{\"bufferView\":1,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\",\"min\":[0],\"max\":[1]},{\"bufferView\":2,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}],"
+                             + "\"animations\":[{\"name\":\"Rise\",\"channels\":[{\"sampler\":0,\"target\":{\"node\":" + (wrapped ? 1 : 0) + ",\"path\":\"translation\"}}],\"samplers\":[{\"input\":1,\"output\":2,\"interpolation\":\"LINEAR\"}]}],"
+                             + "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":36,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":44,\"byteLength\":24}],"
+                           : "],\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36}],") +
+                       "\"buffers\":[{\"byteLength\":" + bin.Length + "}]}";
+            return Pack(json, bin);
+        }
+
+        /// <summary>A skinned triangle this tall, as a rigging model returns it.</summary>
+        static byte[] RiggedGlb(float height)
+        {
+            var bin = new byte[96];
+            Buffer.BlockCopy(new float[] { 0, 0, 0, height * 0.3f, 0, 0, 0, height, 0 }, 0, bin, 0, 36);
+            // Joints: every vertex on joint 0 (bytes 36-47, already zero); weights 1, 0, 0, 0.
+            Buffer.BlockCopy(new float[] { 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 }, 0, bin, 48, 48);
+            var h = height.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var w = (height * 0.3f).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0,1]}]," +
+                       "\"nodes\":[{\"name\":\"Body\",\"mesh\":0,\"skin\":0},{\"name\":\"Hips\"}],\"skins\":[{\"joints\":[1]}]," +
+                       "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":1,\"WEIGHTS_0\":2}}]}]," +
+                       "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[" + w + "," + h + ",0]}," +
+                       "{\"bufferView\":1,\"componentType\":5121,\"count\":3,\"type\":\"VEC4\"},{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC4\"}]," +
+                       "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},{\"buffer\":0,\"byteOffset\":36,\"byteLength\":12},{\"buffer\":0,\"byteOffset\":48,\"byteLength\":48}]," +
+                       "\"buffers\":[{\"byteLength\":96}]}";
+            return Pack(json, bin);
+        }
+
+        static byte[] Pack(string json, byte[] bin)
+        {
             while (json.Length % 4 != 0) json += " ";
             var jsonBytes = Encoding.ASCII.GetBytes(json);
             using (var stream = new MemoryStream())
@@ -265,7 +318,7 @@ namespace Scenario.Editor.Tests
             Serve("asset_mdl00001", "3d", "model/gltf-binary", Glb());
             var files = Import(OutputTypes.Model3D, "Triangle", "asset_mdl00001");
             var download = _server.ToolArguments[_server.ToolCalls.IndexOf("asset_download")];
-            Assert.AreEqual("glb", (string)download["format"]);
+            Assert.IsNull(download["format"], "a GLB comes as stored, with no conversion");
             StringAssert.EndsWith(".glb", files[0].Path);
             Assert.AreEqual("3d", files[0].Kind);
             Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<GameObject>(files[0].Path), "glTFast imports the model");
@@ -274,10 +327,168 @@ namespace Scenario.Editor.Tests
             Assert.AreEqual(1, placed.Objects.Count, placed.Message);
             var instance = placed.Objects[0];
             Assert.IsNotNull(instance.GetComponentInChildren<MeshFilter>());
+            Assert.IsNotNull(instance.GetComponentInChildren<Renderer>().sharedMaterial, "a model without material gets the default one, not magenta");
             Assert.IsNotNull(instance.GetComponentInChildren<MeshCollider>(), "AddCollider is on");
             Assert.IsTrue(PrefabUtility.IsPartOfPrefabInstance(instance));
             Undo.PerformUndo();
             Assert.IsTrue(instance == null, "one Undo removes the model");
+        }
+
+        [Test]
+        public void ModelWithARotatedRootNode_StandsUnderAPlainRoot()
+        {
+            // On the prefab root, a node's rotation is ignored by previews: the result card and the Project
+            // window would show the model lying down.
+            Serve("asset_zupn0001", "3d", "model/gltf-binary", Glb(zUp: true));
+            var files = Import(OutputTypes.Model3D, "Standing", "asset_zupn0001");
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(files[0].Path);
+            Assert.AreEqual(0f, Quaternion.Angle(Quaternion.identity, prefab.transform.localRotation), 0.01f, "the prefab root is plain");
+            Assert.AreEqual(90f, Quaternion.Angle(Quaternion.identity, prefab.GetComponentInChildren<MeshFilter>().transform.rotation), 0.5f, "the node keeps its turn");
+        }
+
+        [Test]
+        public void ModelsWithoutMaterial_EachKeepAMaterialInTheAsset()
+        {
+            // Polygen and Hitem3D Multicolor return meshes with no material (Multicolor paints with vertex colors).
+            Serve("asset_nomt0001", "3d", "model/gltf-binary", Glb());
+            Serve("asset_nomt0002", "3d", "model/gltf-binary", Glb());
+            var files = Import(OutputTypes.Model3D, "Plain", "asset_nomt0001").Concat(Import(OutputTypes.Model3D, "Plain", "asset_nomt0002"));
+            foreach (var file in files)
+                Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<GameObject>(file.Path).GetComponentInChildren<Renderer>().sharedMaterial, file.Path + " has glTFast's default material");
+        }
+
+        [Test]
+        public void ResultLabelledGlb_ButStoredInAnotherFormat_IsConverted()
+        {
+            // Claude Opus 3D edits store a Blender file under the GLB type.
+            Serve("asset_blnd0001", "3d", "model/gltf-binary", Encoding.ASCII.GetBytes("BLENDER-v405 not a glb"), "3d23d");
+            _converted["asset_blnd0001"] = Glb();
+            var files = Import(OutputTypes.Model3D, "Chest", "asset_blnd0001");
+            var formats = _server.ToolCalls.Select((c, i) => (c, i)).Where(x => x.c == "asset_download").Select(x => (string)_server.ToolArguments[x.i]["format"]).ToList();
+            CollectionAssert.AreEqual(new[] { null, "glb" }, formats, "as stored first, then converted");
+            StringAssert.EndsWith(".glb", files[0].Path);
+            Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<GameObject>(files[0].Path));
+        }
+
+        [Test]
+        public void MultiFormatResult_ImportsOnlyTheModel()
+        {
+            // Meshy and Hunyuan return the GLB with OBJ, MTL and PBR map copies of it.
+            Serve("asset_mesh0001", "3d", "model/gltf-binary", Glb(), "txt23d");
+            Serve("asset_mesh0002", "3d", "model/obj", Encoding.ASCII.GetBytes("o Triangle\nv 0 0 0\n"), "txt23d");
+            Serve("asset_mesh0003", "3d", "model/mtl", Encoding.ASCII.GetBytes("newmtl m\n"), "3d-texture-mtl");
+            Serve("asset_mesh0004", "image", "image/png", Png(4, 4, Color.gray), "3d-texture-albedo");
+            Serve("asset_mesh0005", "image", "image/png", Png(4, 4, Color.blue), "3d-texture-normal");
+            var files = Import(OutputTypes.Model3D, "Hero", "asset_mesh0001", "asset_mesh0002", "asset_mesh0003", "asset_mesh0004", "asset_mesh0005");
+            Assert.AreEqual(1, files.Count, string.Join(", ", files.Select(f => f.Path)));
+            StringAssert.EndsWith(".glb", files[0].Path);
+            Assert.AreEqual(1, _server.ToolCalls.Count(c => c == "asset_download"), "the copies are not downloaded");
+        }
+
+        [Test]
+        public void AnimatedModel_GetsAController_AndItsClipMovesThePlacedModel()
+        {
+            Serve("asset_anim0001", "3d", "model/gltf-binary", Glb(animated: true), "txt23d");
+            var files = Import(OutputTypes.Motion, "Rise", "asset_anim0001");
+            var clip = Animations.Clips(files[0].Path).SingleOrDefault();
+            Assert.IsNotNull(clip, "glTFast imports the clip");
+            Assert.IsTrue(clip.isLooping || AnimationUtility.GetAnimationClipSettings(clip).loopTime, "clips loop");
+            var controller = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(Animations.ControllerPath(files[0].Path));
+            Assert.IsNotNull(controller, "a controller next to the model");
+            Assert.AreSame(clip, controller.layers[0].stateMachine.defaultState.motion);
+
+            var placed = Place(OutputTypes.Motion, files, "Rise", null, create: true);
+            var instance = placed.Objects.Single();
+            var animator = instance.GetComponentInChildren<Animator>();
+            Assert.IsNotNull(animator);
+            Assert.AreSame(controller, animator.runtimeAnimatorController);
+            Assert.AreEqual("info", placed.MessageKind, placed.Message);
+            // The clip is bound to the placed hierarchy: sampling it moves the triangle.
+            var mover = instance.GetComponentInChildren<MeshFilter>().transform;
+            clip.SampleAnimation(animator.gameObject, 1f);
+            Assert.AreEqual(1f, mover.localPosition.y, 0.01f);
+            clip.SampleAnimation(animator.gameObject, 0f);
+            Assert.AreEqual(0f, mover.localPosition.y, 0.01f);
+            Undo.PerformUndo();
+            Assert.IsTrue(instance == null, "one Undo removes the model");
+        }
+
+        [Test]
+        public void RigSet_OneControllerOnTheRiggedModel_WithTheOtherFilesClips()
+        {
+            // Meshy Rigging: the rigged character, the character walking, and the walk on a bare skeleton.
+            // The walk files point to the rigged model, whatever order the job lists them in.
+            Serve("asset_rigs0001", "3d", "model/gltf-binary", Glb(), "3d23d", Rig(24), parent: "asset_source01");
+            Serve("asset_rigs0002", "3d", "model/gltf-binary", Glb(animated: true), "3d23d", Rig(24), parent: "asset_rigs0001");
+            Serve("asset_rigs0003", "3d", "model/gltf-binary", Glb(animated: true), "3d23d", Rig(24, textured: false), parent: "asset_rigs0001");
+            var files = Import(OutputTypes.Model3D, "Hero", "asset_rigs0002", "asset_rigs0003", "asset_rigs0001");
+            Assert.AreEqual(2, files.Count, "the bare skeleton is left out");
+            var rigged = files.Single(f => f.AssetId == "asset_rigs0001");
+            Assert.AreSame(rigged, Importer.Main(files), "the rigged model is the one placed");
+            var controller = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(Animations.ControllerPath(rigged.Path));
+            Assert.IsNotNull(controller, "the rigged model gets the controller");
+            Assert.AreEqual("Rise", controller.layers[0].stateMachine.defaultState.name, "the walk file's clip");
+            var walk = files.Single(f => f.AssetId == "asset_rigs0002");
+            Assert.IsNull(AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(Animations.ControllerPath(walk.Path)), "one controller per result");
+            var placed = Place(OutputTypes.Model3D, files, "Hero", null, create: true);
+            Assert.AreSame(controller, placed.Objects.Single().GetComponentInChildren<Animator>().runtimeAnimatorController);
+        }
+
+        [Test]
+        public void RigSet_ClipFromAFileWithAnExtraRootNode_StillDrivesTheRiggedModel()
+        {
+            // Tripo: both files have one root node, "scene". Left to its default, glTFast merges it into the
+            // prefab root of the rigged file but keeps it in the walk file, whose clip then addresses
+            // "scene/Triangle" on a model that has "Triangle".
+            Serve("asset_trip0001", "3d", "model/gltf-binary", Glb(wrapped: true), "3d23d", Rig(41), parent: "asset_source01");
+            Serve("asset_trip0002", "3d", "model/gltf-binary", Glb(animated: true, wrapped: true), "3d23d", Rig(41), parent: "asset_source01");
+            var files = Import(OutputTypes.Model3D, "Walker", "asset_trip0001", "asset_trip0002");
+            var placed = Place(OutputTypes.Model3D, files, "Walker", null, create: true);
+            var instance = placed.Objects.Single();
+            var animator = instance.GetComponentInChildren<Animator>();
+            var clip = animator.runtimeAnimatorController.animationClips.Single();
+            var mover = instance.GetComponentInChildren<MeshFilter>().transform;
+            clip.SampleAnimation(animator.gameObject, 1f);
+            Assert.AreEqual(1f, mover.localPosition.y, 0.01f, "the walk file's clip moves the rigged model");
+            clip.SampleAnimation(animator.gameObject, 0f);
+            Assert.AreEqual(0f, mover.localPosition.y, 0.01f);
+        }
+
+        [Test]
+        public void RigInCentimeters_IsPlacedAtMeterScale()
+        {
+            // Cartwheel rigging writes centimeters: a 180 m character is 1.8 m.
+            Serve("asset_cmrg0001", "3d", "model/gltf-binary", RiggedGlb(180), "3d23d", Rig(1));
+            var files = Import(OutputTypes.Model3D, "Giant", "asset_cmrg0001");
+            var placed = Place(OutputTypes.Model3D, files, "Giant", null, create: true);
+            var instance = placed.Objects.Single();
+            Assert.AreEqual(0.01f, instance.transform.localScale.y, 1e-6f);
+            StringAssert.Contains("centimeters", placed.Message);
+        }
+
+        [Test]
+        public void StateNames_ReadAsWords()
+        {
+            Assert.AreEqual("Walking man", Animations.StateName("Armature|walking_man|baselayer", 1));
+            Assert.AreEqual("Casual Walk", Animations.StateName("Armature|Casual_Walk|baselayer", 1));
+            Assert.AreEqual("Motion 2", Animations.StateName("export-SHAB--detzquuddz_interpolated_30.0fps", 2));
+            Assert.AreEqual("Walk", Animations.StateName("walk", 1));
+            Assert.AreEqual("Motion 1", Animations.StateName("", 1));
+        }
+
+        [Test]
+        public void Splat_IsKeptAsAFile_AndNotPlaced()
+        {
+            Serve("asset_splt0001", "3d", "model/spz", new byte[] { 0x1F, 0x8B, 8, 0, 0, 0, 0, 0 }, "img2splat");
+            var files = Import(OutputTypes.Model3D, "Chest", "asset_splt0001");
+            var download = _server.ToolArguments[_server.ToolCalls.IndexOf("asset_download")];
+            Assert.IsNull(download["format"], "no conversion for a splat");
+            StringAssert.EndsWith(".spz", files[0].Path);
+            Assert.AreEqual("splat", files[0].Kind);
+            var placed = Place(OutputTypes.Model3D, files, "Chest", null, create: true);
+            Assert.AreEqual(0, placed.Objects.Count);
+            StringAssert.Contains("splat", placed.Message);
+            Assert.IsFalse(OutputTypes.StepsFor(Importer.KindOfPath(files[0].Path)).Any(), "no 3D steps on a splat");
         }
 
         [Test]
@@ -339,6 +550,7 @@ namespace Scenario.Editor.Tests
         {
             Assert.AreEqual("3d", Importer.KindOfPath("Assets/a.glb"));
             Assert.AreEqual("3d", Importer.KindOfPath("Assets/a.fbx"));
+            Assert.AreEqual("splat", Importer.KindOfPath("Assets/a.spz"));
             Assert.AreEqual("audio", Importer.KindOfPath("Assets/a.wav"));
             Assert.AreEqual("video", Importer.KindOfPath("Assets/a.mp4"));
             Assert.AreEqual("image", Importer.KindOfPath("Assets/a.png"));

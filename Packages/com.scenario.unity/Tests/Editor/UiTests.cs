@@ -61,11 +61,46 @@ namespace Scenario.Editor.Tests
 
         VisualElement Q(string name) => _window.rootVisualElement.Q(name);
 
+        /// <summary>Frames until the condition holds: the price check waits 400 ms after the last change.</summary>
+        static IEnumerator Until(System.Func<bool> condition, double seconds = 10)
+        {
+            var end = EditorApplication.timeSinceStartup + seconds;
+            while (!condition() && EditorApplication.timeSinceStartup < end) yield return null;
+        }
+
+        JToken LastPriceParameter(string name)
+        {
+            var call = _server.ToolCalls.LastIndexOf("model_run");
+            return call < 0 ? null : _server.ToolArguments[call]["parameters"]?[name];
+        }
+
         void NoPaidCall()
         {
             for (var i = 0; i < _server.ToolCalls.Count; i++)
                 if (_server.ToolCalls[i] == "model_run" || _server.ToolCalls[i] == "workflow_run" || _server.ToolCalls[i] == "prompt_spark")
                     Assert.AreEqual(true, (bool?)_server.ToolArguments[i]["dry_run"], $"{_server.ToolCalls[i]} without dry_run");
+        }
+
+        [Test]
+        public void CachedThumbnail_IsSetOnATileNotYetInTheWindow()
+        {
+            // A thumbnail already on disk loads at once, before the Library adds the new tile to the window.
+            var key = "asset_thumbtest" + System.Guid.NewGuid().ToString("N").Substring(0, 8);
+            var path = System.IO.Path.Combine("Library/Scenario/thumbs", Files.Slug(key, 80) + ".img");
+            System.IO.Directory.CreateDirectory("Library/Scenario/thumbs");
+            var image = new Texture2D(4, 4);
+            System.IO.File.WriteAllBytes(path, image.EncodeToPNG());
+            Object.DestroyImmediate(image);
+            try
+            {
+                var tile = new VisualElement();
+                Thumbnails.Load(tile, key, "https://cdn.cloud.scenario.com/assets/" + key);
+                Assert.IsNotNull(tile.style.backgroundImage.value.texture, "the tile shows the cached thumbnail");
+            }
+            finally
+            {
+                System.IO.File.Delete(path);
+            }
         }
 
         [UnityTest]
@@ -148,6 +183,96 @@ namespace Scenario.Editor.Tests
             _window.position = new Rect(40, 40, 1040, 720);
             yield return Frames(6);
             Assert.IsTrue(_window.rootVisualElement.ClassListContains("sc-wide") || _window.rootVisualElement.resolvedStyle.width < 560);
+
+            NoPaidCall();
+        }
+
+        static JObject Model(string id, string name, params string[] caps) => new JObject
+        {
+            ["id"] = id, ["name"] = name, ["capabilities"] = new JArray(caps), ["privacy"] = "public", ["status"] = "trained", ["type"] = "custom",
+        };
+
+        static JObject Schema(string id, params JObject[] parameters) => new JObject { ["model_id"] = id, ["name"] = id, ["parameters"] = new JArray(parameters) };
+
+        static readonly JObject CharacterInput = new JObject { ["name"] = "model", ["type"] = "file", ["kind"] = "3d", ["required"] = true, ["description"] = "The 3D model (GLB)" };
+
+        [UnityTest]
+        public IEnumerator ThreeDSteps_OfferTheirModels_AndMeshyMotionsByName()
+        {
+            _server.Tools["models_list"] = (args, i) => FakeMcp.Result(new JObject
+            {
+                ["models"] = new JArray(
+                    Model("model_meshy-rigging", "Meshy Rigging", "3d23d"), Model("model_uthana-character-rigging", "Uthana Character Rigging", "3d23d"),
+                    Model("model_cartwheel-character-rigging", "Cartwheel Character Rigging", "3d23d"), Model("model_tripo-rigging-v1", "Tripo Rigging 1.0 [Biped]", "3d23d"),
+                    Model("model_meshy-animation", "Meshy Animation", "3d23d"), Model("model_tencent-texture-edit", "Tencent Texture Edit", "3d23d")),
+            });
+            _server.Tools["model_schema_get"] = (args, i) =>
+            {
+                var id = (string)args["model_id"];
+                if (id == "model_meshy-animation")
+                    return FakeMcp.Result(Schema(id, CharacterInput, new JObject
+                    {
+                        ["name"] = "actionId", ["type"] = "number", ["required"] = true, ["default"] = 0, ["min"] = 0, ["step"] = 1,
+                        ["description"] = "The animation to apply, given as its ID number from Meshy's animation library.",
+                    }));
+                if (id == "model_tencent-texture-edit")
+                    return FakeMcp.Result(Schema(id, new JObject { ["name"] = "file3d", ["type"] = "file", ["kind"] = "3d", ["required"] = true, ["description"] = "Source 3D model file. Supported format: FBX." },
+                        new JObject { ["name"] = "prompt", ["type"] = "string", ["prompt"] = true }));
+                return FakeMcp.Result(Schema(id, CharacterInput));
+            };
+            var converted = 0;
+            _server.Tools["asset_download"] = (args, i) =>
+            {
+                if ((string)args["format"] == "fbx") converted++;
+                return FakeMcp.Result(new JObject { ["url"] = "https://cdn.cloud.scenario.com/assets/" + (string)args["asset_id"] });
+            };
+            _server.DownloadContent = url => System.Text.Encoding.ASCII.GetBytes("Kaydara FBX Binary  \0test");
+            _server.Tools["upload_asset"] = (args, i) => FakeMcp.Result(new JObject { ["asset_id"] = "asset_fbxcopy01", ["parts"] = new JArray() });
+            Assert.IsTrue(Run.Sync(_s.SignInWithApiKey("key_test", "secret_test")), _s.SignInError);
+            Run.Sync(_s.RefreshCatalog(true));
+            _window = ScenarioWindow.Open();
+            _window.position = new Rect(40, 40, 460, 780);
+            yield return Frames(6);
+
+            // A step offers the models that do it.
+            var character = new SlotItem { AssetId = "asset_char0001", Kind = "3d", Label = "Hero" };
+            _window.Create.StartStep(OutputTypes.Step("rig"), character);
+            yield return Frames(8);
+            var hint = Q("step-hint");
+            Assert.IsNotNull(hint, "the step says what it does");
+            var labels = hint.parent.Query<Label>().ToList().Select(l => l.text).ToList();
+            foreach (var name in new[] { "Meshy Rigging", "Uthana Character Rigging", "Cartwheel Character Rigging", "Tripo Rigging 1.0 [Biped]" })
+                CollectionAssert.Contains(labels, name);
+
+            // Meshy's library by name: pick a walk, the price check sends its id.
+            _window.Create.StartStep(OutputTypes.Step("animate-3d"), new SlotItem { AssetId = "asset_char0001", Kind = "3d", Label = "Hero" });
+            yield return Frames(8);
+            var current = Q<Button>("motion-current");
+            Assert.IsNotNull(current, "the motion picker replaces the number field");
+            StringAssert.Contains("Idle", current.Q<Label>().text);
+            using (var submit = NavigationSubmitEvent.GetPooled())
+            {
+                submit.target = current;
+                current.SendEvent(submit);
+            }
+            yield return Frames(2);
+            Q<TextField>("motion-search").value = "casual walk";
+            yield return Frames(2);
+            var list = Q<ListView>("motion-list");
+            Assert.Greater(list.itemsSource.Count, 0);
+            var index = list.itemsSource.Cast<MotionLibrary.Motion>().ToList().FindIndex(m => m.Id == 30);
+            list.SetSelection(index);
+            yield return Until(() => LastPriceParameter("actionId")?.ToString() == "30");
+            StringAssert.Contains("Casual Walk", current.Q<Label>().text);
+            Assert.AreEqual(30, (int)LastPriceParameter("actionId"));
+
+            // An input that refuses GLB gets an FBX copy before the price check.
+            _window.Create.StartStep(OutputTypes.Step("retexture"), new SlotItem { AssetId = "asset_char0001", Kind = "3d", Label = "Hero" });
+            yield return Frames(2);
+            _window.Create.SelectModel("model_tencent-texture-edit");
+            yield return Until(() => (string)LastPriceParameter("file3d") == "asset_fbxcopy01");
+            Assert.AreEqual(1, converted, "converted once");
+            Assert.AreEqual("asset_fbxcopy01", (string)LastPriceParameter("file3d"));
 
             NoPaidCall();
         }

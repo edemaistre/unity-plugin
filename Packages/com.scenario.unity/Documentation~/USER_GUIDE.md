@@ -30,7 +30,9 @@ Sign out from the account menu in the header or in **Settings**.
 
 ### Output type
 
-Pick **Image, Video, 3D, Audio, Material, Skybox** or **All models**. A type sets the model filter, the quick picks and how the result lands in Unity. It never limits you: **All models** reaches the whole catalog.
+Pick **Image, Video, 3D, Motion, Audio, Material, Skybox** or **All models**. A type sets the model filter, the quick picks and how the result lands in Unity. It never limits you: **All models** reaches the whole catalog.
+
+**Motion** gathers the animation models: a motion from a prompt (Cartwheel, Uthana, Meshy), from a video (Cartwheel, Uthana), or from Meshy's motion library, applied to your character.
 
 ### Model
 
@@ -45,9 +47,13 @@ Type a prompt. **Improve** runs Prompt Spark, which rewrites the prompt for the 
 
 Models that take files show one slot per input (reference images, a start frame, a 3D model, a video, a voice). Fill a slot by dragging from the Project window or the Hierarchy, or from its **+** menu: **Selection**, **Capture the Scene view**, **Capture the main camera**, **Browse files…** or **Scenario asset…**. Unity files are uploaded once when needed (uploads are free).
 
+A 3D input that a model only reads as FBX (Tencent Texture Edit) gets an FBX copy of your model, made by Scenario for free. Some inputs are optional in the schema but needed in practice; the button then says which, for example "Add a character: a 3D model, or an image of one" for Cartwheel's motions.
+
 ### Settings
 
-The form comes from the model's live schema. The essentials (required fields, anything that changes the price, aspect ratio, count, duration) are shown first; **More settings** opens the rest. Fields that change the price are marked.
+The form comes from the model's live schema. The essentials (required fields, anything that changes the price, aspect ratio, count, duration, polycount, rig type) are shown first; **More settings** opens the rest. Fields that change the price are marked.
+
+Meshy Animation's motion is picked by name from its library of about 650 motions (walks, runs, fights, dances, daily actions), with a search and category chips. Meshy 7.1 generates at 30,000 triangles by default, for the same price as its full detail of about a million; turn off **Should remesh** in **More settings** for the full mesh.
 
 ### Price and Generate
 
@@ -69,12 +75,17 @@ Drag the bar above the tray to resize it.
 
 Steps turn an asset into the next one. They open Create with the right model and the asset already attached, so you see the price before anything is sent.
 
-| Asset | Steps (default model, all swappable) |
+| Asset | Steps (default model; the other models of the step are one click away in the model card) |
 |---|---|
-| Image | Edit with a prompt (GPT Image 2.5 Sunburst), Remove background (Birefnet), Upscale (Clarity Pro), Make a 3D model (Meshy 7.1 Image to 3D), Animate to video (Minimax H3), Make a PBR material (PATINA Image to Maps), Make a skybox (HY World Image to Skybox), Vectorize, Pixelate |
-| 3D model | Retexture (Meshy 7), Retopology (Tripo v3), UV unwrap (Tripo Smart UV), Rig a character (Meshy Rigging), Edit with a prompt (Claude Opus 5.5 3D), Split into parts (Tripo Segmentation v2) |
-| Video | Upscale (Kandinsky 6.0 VSR), Add sound (Mirelo SFX 2.0 Video to Audio), Restyle (Seedance 2.5) |
+| Image | Edit with a prompt (GPT Image 2.5 Sunburst), Remove background (Birefnet), Upscale (Clarity Pro), Make a 3D model (Meshy 7.1 Image to 3D; also Hunyuan 3D 3.1, Tripo P2, Rodin 2.5, Hitem3D, Trellis 2, Claude Opus 5.5 3D, Astra 3D, Voxel Crafter), Make a Gaussian splat (TripoSplat; also HY World, Marble), Animate to video (Minimax H3), Make a PBR material (PATINA Image to Maps), Make a skybox (HY World Image to Skybox), Vectorize, Pixelate |
+| 3D model, Texture | Retexture (Meshy 7 Retexture; also Tripo 3.0 Texturing, Tencent Texture Edit, Trellis 2, YVO3D), UV unwrap (Tripo Smart UV; also Meshy, Tencent) |
+| 3D model, Shape | Edit with a prompt (Claude Opus 5.5 3D; also Astra 3D), Retopology (Tripo Retopology v3; also Hunyuan Polygen), Remesh to a polycount (Meshy Remesh; also Hunyuan Polygen), Refine the shape from an image (UltraShape) |
+| 3D model, Rig and animate | Rig a character (Uthana; also Meshy, Cartwheel, Tripo), Rig a creature (Tripo Rigging 2.5), Animate from the motion library (Meshy Animation; also Tripo), Animate from a prompt (Cartwheel; also Uthana, Astra), Animate from a video (Cartwheel; also Uthana) |
+| 3D model, Parts and style | Split into parts (Tripo Segmentation v2; also Hunyuan 3D Part, Hitem3D Split, Rodin Bang, Tripo Segmentation v1), Stylize: LEGO, voxel, Voronoi (Tripo Stylization; also Hitem3D Multicolor) |
+| Video | Upscale (Kandinsky 6.0 VSR), Add sound (Mirelo SFX 2.0 Video to Audio), Restyle (Seedance 2.5; also Minimax H3 3D to video), Animate a character from this video (Cartwheel; also Uthana) |
 | Audio | Change the voice (ElevenLabs Voice Changer), Isolate the voice (ElevenLabs Voice Isolator) |
+
+The 3D steps are grouped in the **Next** menu (Texture, Shape, Rig and animate, Parts and style). Each step shows a one-line hint under the model card, for example the input size a model accepts.
 
 Where to find them: the result card's **Next**, a right-click in the Project window (**Scenario > Next Step…**), the **Next** button in the Inspector header of a generated asset, and the Library.
 
@@ -83,6 +94,10 @@ Where to find them: the result card's **Next**, a right-click in the Project win
 - Files: `Assets/Scenario/<Type>/<yyyy-MM-dd>/<prompt>-<id>[-<map>].<ext>`. Change the root folder and the daily subfolders in **Settings > Output**.
 - Images import as textures, or as sprites in 2D projects (or with **Settings > Import > Images as sprites**). Normal maps import as normal maps, roughness, metallic, occlusion and height maps as linear data.
 - 3D models are GLB files imported by glTFast as prefabs. Placed instances sit on the ground at the Scene view pivot, or next to the selected object, with a MeshCollider if **Add a collider** is on.
+- A 3D result is imported as one model. The copies some models add (OBJ, MTL, PBR maps already inside the GLB) are not downloaded. Results Scenario stores as FBX, Blender or VOX files are converted to GLB on download, skins and animations included.
+- Animated results (rigging with a walk, motions, library animations) get an Animator Controller next to the file, one state per clip, a real motion as the default state. The placed model plays it in Play mode. A rig that comes with walk and run files is one model with all the clips; the bare-skeleton copies are skipped.
+- A rig written in centimeters (a character tens of meters tall) is placed at 1% scale, and the notification says so. Meshes that come without a material get glTFast's default one, which keeps vertex colors (Hitem3D Multicolor, Hunyuan 3D Part).
+- Gaussian splats (TripoSplat, HY World, Marble) are saved as `.ply` or `.spz` files and not placed: Unity needs a Gaussian splat renderer package to show them.
 - Materials are built for the active render pipeline: base color, normal, height, occlusion, and metallic with smoothness packed into the pipeline's map.
 - Skyboxes are `Skybox/Panoramic` materials set in the scene's lighting. HDRP draws its sky from a Volume: there the material is created and the window says what to set.
 - Audio lands on the selected AudioSource or a new one (spatial in 3D scenes). Video lands on the selected VideoPlayer or a new screen quad.
@@ -180,6 +195,8 @@ var result = await ScenarioApi.Generate("model_openai-gpt-image-2-5-flare", para
 
 - **"Price unavailable"**: the form has a value the model refuses, or Scenario did not answer. The message under the button says which. Run **Settings > Diagnostics**.
 - **Generate stays disabled**: the price is being checked, a required input is empty, an upload is in progress, or spending is off. The button says which.
+- **"Needs an input" on a motion model**: Cartwheel animates a character you give it. Add a 3D model (rigged or not), or an image it turns into a character first (dearer).
+- **An animated model does not move**: animations play in Play mode. Select the placed model: its Animator has the controller made at import, with one state per clip.
 - **A job is Unknown**: wait a minute, then **Look for it on Scenario** on its card. Do not generate the same request again until it is resolved.
 - **The model did not land on my object**: the line above Generate says where results go. Select the object before generating, or use **Place** on the card afterwards.
 - **The agent cannot connect**: check that the Agent toggle is on and the dot is green, that the client uses the current token (after **Regenerate**, copy the setup again), and that the port is free (change it in Settings if another program uses it). The bridge restarts for a few seconds after each script compile.

@@ -17,7 +17,11 @@ namespace Scenario.Editor
     /// </summary>
     public static class Uploader
     {
-        const string CachePath = "Library/Scenario/uploads.json";
+        const string DefaultCachePath = "Library/Scenario/uploads.json";
+        /// <summary>Content hash and conversion to asset id, per workspace. Tests point it elsewhere.</summary>
+        internal static string CachePath = DefaultCachePath;
+
+        internal static void ResetCachePath() => CachePath = DefaultCachePath;
         const string UploadHostSuffix = ".amazonaws.com";
 
         public static async Task<Result<string>> UploadFile(McpClient client, string path, CancellationToken cancel = default)
@@ -66,6 +70,32 @@ namespace Scenario.Editor
             cache[key] = assetId;
             WriteCache(cache);
             return Result<string>.Success(assetId);
+        }
+
+        /// <summary>
+        /// A Scenario 3D asset in another format, as a new asset (free): for inputs that
+        /// refuse GLB, such as Tencent Texture Edit (FBX only). Converted once per workspace.
+        /// </summary>
+        public static async Task<Result<string>> Convert(McpClient client, string assetId, string format, CancellationToken cancel = default)
+        {
+            var key = $"{client.TeamId}/{client.ProjectId}/convert/{assetId}.{format}";
+            var cache = ReadCache();
+            var cached = Json.Str(cache, key);
+            if (cached.StartsWith("asset_", StringComparison.Ordinal)) return Result<string>.Success(cached);
+            var url = await client.DownloadUrl(assetId, format, cancel);
+            if (!url.Ok) return url.Cast<string>();
+            if (!Files.IsScenarioCdn(url.Value)) return Result<string>.Fail(ErrorKind.Local, "Refused to download from an unexpected host.");
+            var path = Path.GetFullPath(Path.Combine(Files.Downloads, $"{assetId}.{format}"));
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var reply = await client.Transport.DownloadAsync(url.Value, path, 600, null, cancel);
+            if (!reply.IsSuccess)
+                return Result<string>.Fail(ErrorKind.Transport, $"Converting {assetId} to {format.ToUpperInvariant()} failed ({(reply.Answered ? "HTTP " + reply.Status : reply.Error)}).");
+            var uploaded = await UploadFile(client, path, cancel);
+            if (!uploaded.Ok) return uploaded;
+            cache = ReadCache();
+            cache[key] = uploaded.Value;
+            WriteCache(cache);
+            return uploaded;
         }
 
         /// <summary>A project asset: textures in any format, models, audio, video.</summary>

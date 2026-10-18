@@ -59,6 +59,15 @@ namespace ScenarioDev
                     if (id != null) sources[kind] = id;
                     Log($"source {kind}: {id ?? "none in the project"}");
                 }
+                // SCENARIO_CONTRACT_SOURCES=3d=asset_x,video=asset_y,fbx=asset_z pins sources: the newest 3D asset may be a splat or a skeleton,
+                // and fbx stands in for a converted copy (the upload counts as spending).
+                foreach (var pair in (Environment.GetEnvironmentVariable("SCENARIO_CONTRACT_SOURCES") ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var parts = pair.Split('=');
+                    if (parts.Length != 2) continue;
+                    sources[parts[0].Trim()] = parts[1].Trim();
+                    Log($"source {parts[0].Trim()} pinned: {parts[1].Trim()}");
+                }
 
                 foreach (var type in OutputTypes.List.Where(t => t.QuickPicks.Length > 0))
                     foreach (var model in type.QuickPicks)
@@ -73,7 +82,8 @@ namespace ScenarioDev
                         Log($"SKIP step {step.Kind}/{step.Id}: no {step.Kind} asset in the project");
                         continue;
                     }
-                    if (!await Price($"step {step.Kind}/{step.Id}", step.DefaultModel, step.OutputType, "Make it look hand-painted", sources, step.Kind)) return;
+                    foreach (var model in step.Models)
+                        if (!await Price($"step {step.Kind}/{step.Id}", model, step.OutputType, "Make it look hand-painted", sources, step.Kind)) return;
                 }
 
                 foreach (var capability in new[] { "txt2img", "img2img", "txt2video", "img2video", "txt23d", "img23d", "txt2audio" })
@@ -132,7 +142,9 @@ namespace ScenarioDev
                 Fail(label, $"{modelId} has no {stepKind} input");
                 return true;
             }
-            foreach (var field in fields.Where(f => f.IsFile && (f == stepField || f.Required)))
+            // An input Scenario needs although the schema marks it optional: the step's own input when it is one, else the first.
+            var needed = OutputTypes.Needs(modelId).Select(n => n.Fields.Contains(stepField?.Name) ? stepField.Name : n.Fields[0]).ToList();
+            foreach (var field in fields.Where(f => f.IsFile && (f == stepField || f.Required || needed.Contains(f.Name))))
             {
                 var kind = string.IsNullOrEmpty(field.Kind) ? "image" : field.Kind.ToLowerInvariant();
                 if (!sources.TryGetValue(kind, out var id))
@@ -140,9 +152,27 @@ namespace ScenarioDev
                     Log($"SKIP {label} {modelId}: needs a {kind} input and the project has none");
                     return true;
                 }
+                // Inputs that refuse GLB get a converted copy, as in the window.
+                var format = SchemaForm.RequiredModelFormat(field);
+                if (format.Length > 0 && sources.TryGetValue(format, out var pinned))
+                {
+                    Log($"pinned {format} source {pinned}");
+                    id = pinned;
+                }
+                else if (format.Length > 0)
+                {
+                    var converted = await S.Convert(id, format);
+                    if (!converted.Ok)
+                    {
+                        Fail(label, $"{modelId} {format} conversion: {converted.Error.Message}");
+                        return true;
+                    }
+                    Log($"converted {id} to {format}: {converted.Value}");
+                    id = converted.Value;
+                }
                 values[field.Name] = field.Type == FieldType.Files ? (JToken)new JArray(id) : id;
             }
-            var problems = SchemaForm.Validate(fields, values);
+            var problems = SchemaForm.Validate(fields, values, modelId);
             if (problems.Count > 0)
             {
                 Fail(label, $"{modelId} form: {string.Join(" ", problems)}");

@@ -21,6 +21,9 @@ namespace Scenario.Editor.UI
         public string ThumbPath = "";
         public bool Uploading;
         public string Error = "";
+        /// <summary>Set when AssetId is a converted copy (FBX for inputs that refuse GLB): the format and the original id.</summary>
+        public string Format = "";
+        public string OriginalAssetId = "";
     }
 
     /// <summary>

@@ -31,14 +31,20 @@ In `Packages/com.scenario.unity/Editor/` (assembly `Scenario.Editor`):
   - `SchemaForm.cs`: model schema or workflow `inputs_definition` to form
     fields, validation, payload.
   - `Catalog.cs`, `OutputTypes.cs`: the model catalog, output types, quick
-    picks, presets and typed steps.
+    picks, presets, inputs a model needs beyond its schema, and typed steps
+    (each with a default model and alternatives, grouped for 3D).
+  - `MotionLibrary.cs`: Meshy Animation's motions by name, from
+    `Editor/Data/meshy-actions.json`.
   - `Files.cs`, `Transport.cs`: names, roles, sniffing, CDN allowlist, HTTP.
 - `Services/ScenarioService.cs`: the action layer shared by the window, the
   agent bridge and the C# API: account, workspace, estimate, generate, poll,
   import, place.
-- `Unity/`: importer, placer, material and skybox builders, uploader, capture,
-  provenance and the Inspector header, context menus, main-thread dispatcher,
-  settings, `ScenarioApi`.
+- `Unity/`: importer (one model per 3D result, rig sets, a glTFast fallback
+  material fix), animations (an Animator Controller per animated model, clips
+  from sibling files remapped to its hierarchy), placer, material and skybox
+  builders, uploader (with free format conversion for inputs that refuse GLB),
+  capture, provenance and the Inspector header, context menus, main-thread
+  dispatcher, settings, `ScenarioApi`.
 - `UI/`: `ScenarioWindow` (shell), `Views/`, `Overlays/` (model browser,
   command palette), `Components/`, `Styles/Scenario.uss`, `Icons/` (built by
   `tools/build_icons.py`).
@@ -76,8 +82,26 @@ Unity -batchmode -projectPath . -runTests -testPlatform EditMode -testResults re
 # Free live contract check (test key in SCENARIO_API_KEY and SCENARIO_API_SECRET)
 SCENARIO_NO_SPEND=1 SCENARIO_UNITY_SERVICE=1 Unity -batchmode -projectPath . -executeMethod ScenarioDev.ContractCheck.Run
 
-# PAID acceptance run: never without explicit authorization for the project and budget
+# Pin sources when the newest project asset is the wrong kind (a splat, a skeleton); fbx stands in for a converted copy
+SCENARIO_CONTRACT_SOURCES=3d=asset_x,image=asset_y,fbx=asset_z
+
+# Free 3D import check: real results of every 3D operation through the importer, renders in Library/ScenarioDevLogs/accept3d
+SCENARIO_NO_SPEND=1 SCENARIO_UNITY_SERVICE=1 Unity -batchmode -projectPath . -executeMethod ScenarioDev.Accept3D.Import
+
+# PAID acceptance runs: never without explicit authorization for the project and budget
 SCENARIO_ACCEPT=1 SCENARIO_UNITY_SERVICE=1 Unity -batchmode -projectPath . -executeMethod ScenarioDev.Acceptance.Run
+SCENARIO_ACCEPT=1 SCENARIO_UNITY_SERVICE=1 Unity -batchmode -projectPath . -executeMethod ScenarioDev.Accept3D.Paid
+
+# Live sign-in check: the authorize URL lands in Library/ScenarioDevLogs/e2e/authorize-url.txt;
+# a person opens it and signs in within 10 minutes. Nothing is saved.
+Unity -batchmode -projectPath . -executeMethod ScenarioDev.E2E.OAuth
+
+# Agent check: the bridge on in a batch editor, Claude Code drives it with free tools (temporary MCP config)
+Unity -batchmode -projectPath . -executeMethod ScenarioDev.E2E.Agent &
+python3 tools/e2e_agent.py Library/ScenarioDevLogs/e2e Library/ScenarioDevLogs/e2e/agent
+
+# After a change to how models import, reimport the Scenario models of this project
+Unity -batchmode -projectPath . -executeMethod ScenarioDev.Accept3D.ReimportModels
 
 # Icons from SVG
 uv run -q --with resvg-py tools/build_icons.py

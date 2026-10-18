@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using Scenario.Editor;
 using Scenario.Editor.Agent;
+using Scenario.Editor.Core;
 using Scenario.Editor.UI;
 using UnityEditor;
 using UnityEditorInternal;
@@ -29,6 +30,8 @@ namespace ScenarioDev
             public float MaxWait = 20f;
             public Vector2 Size = new Vector2(460, 780);
             public bool BothThemes = true;
+            /// <summary>The window to capture, when it is not the Scenario window.</summary>
+            public Func<EditorWindow> Capture;
         }
 
         static readonly List<Step> Steps = new List<Step>();
@@ -54,7 +57,8 @@ namespace ScenarioDev
         public static void SignedIn()
         {
             Steps.Clear();
-            Add("create-image", () => { _window.Show("create"); _window.Create.SelectType("image", true); }, min: 4, max: 40);
+            // Long enough for the project name and the day's spend to load into the header.
+            Add("create-image", () => { _window.Show("create"); _window.Create.SelectType("image", true); }, min: 12, max: 40);
             Add("create-image-prompt", () => _window.Create.SetPrompt("A mossy stone golem guarding a forest shrine, stylized game art, soft rim light"), min: 3);
             Add("create-suggest", () => Click(Q("suggest")), min: 6, max: 40);
             Add("create-model3d", () => _window.Create.SelectType("model3d"), min: 4);
@@ -63,7 +67,23 @@ namespace ScenarioDev
             Add("create-video", () => _window.Create.SelectType("video"), min: 4);
             Add("create-audio", () => _window.Create.SelectType("audio"), min: 4);
             Add("create-all", () => _window.Create.SelectType("all"), min: 4);
-            Add("create-more-settings", () => { _window.Create.SelectType("image"); }, min: 4);
+            Add("step-to-3d", () =>
+            {
+                // A typed step on a generated image: the image fills the input slot and the price shows.
+                var row = S.Ledger.Jobs.LastOrDefault(r => r.OutputType == "image" && r.Imported && r.Files.Count > 0 && r.AssetIds.Count > 0);
+                if (row == null) { Report.Add("no generated image for the step"); return; }
+                var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(row.Files[0]);
+                _window.Create.StartStep(OutputTypes.Step("to-3d"), new SlotItem { AssetId = row.AssetIds[0], Kind = "image", Source = texture, Label = texture != null ? texture.name : "image" });
+            }, min: 6, max: 40);
+            Add("create-motion", () => _window.Create.SelectType("motion"), min: 4);
+            // The 3D steps on a generated model: each prices against Scenario with the model in its slot.
+            Add("step-retexture", () => StartModelStep("retexture"), min: 6, max: 40);
+            Add("step-remesh", () => StartModelStep("remesh"), min: 6, max: 40);
+            Add("step-rig", () => StartModelStep("rig"), min: 6, max: 40);
+            Add("step-animate-library", () => StartModelStep("animate-3d"), min: 6, max: 40);
+            Add("motion-picker", () => Click(Q("motion-current")), min: 2);
+            Add("motion-picker-search", () => { var f = Q<TextField>("motion-search"); if (f != null) f.value = "sword"; }, min: 2);
+            Add("create-more-settings", () => { _window.CloseOverlay(); _window.Create.SelectType("image"); _window.Create.SelectModel("model_openai-gpt-image-2-5-flare"); }, min: 4);
             Add("create-more-settings-open", () => Click(Q("more-settings")), min: 1.5f);
             Add("model-browser", () => Click(Q("change-model")), min: 3);
             Add("model-browser-search", () => { var f = Q<TextField>("model-search"); if (f != null) f.value = "flux"; }, min: 1.5f);
@@ -76,8 +96,15 @@ namespace ScenarioDev
                 _window.Toast("Claude Code asks to spend 12 CU: generate a texture.", "warning", "Review", () => { }, 30);
                 _window.Toast("Price unavailable: the request timed out.", "error");
             }, min: 1);
-            Add("library-scenario", () => _window.Show("library"), min: 8, max: 30);
+            // Long enough for the Scenario thumbnails to arrive.
+            Add("library-scenario", () => _window.Show("library"), min: 16, max: 30);
             Add("library-project", () => Click(Q("tab-project")), min: 2);
+            Add("library-audio", () =>
+            {
+                Click(Q("tab-scenario"));
+                var library = _window.ViewForTests("library");
+                Click(library.Query<Label>().Where(l => l.text == "Audio" && l.parent.ClassListContains("sc-chip")).First()?.parent);
+            }, min: 6, max: 30);
             Add("jobs", () => _window.Show("jobs"), min: 2);
             Add("workflows-team", () => _window.Show("workflows"), min: 5, max: 30);
             Add("workflows-featured", () => Click(Q("tab-public") ?? FindByText("Featured")), min: 5, max: 30);
@@ -87,13 +114,72 @@ namespace ScenarioDev
             Add("agent-restore", () => AgentServer.SetEnabled(false), min: 1);
             Add("settings", () => _window.Show("settings"), min: 2);
             Add("settings-diagnostics", () => Click(Q("run-diagnostics")), min: 12, max: 40);
-            Add("create-wide", () => _window.Show("create"), min: 4, size: new Vector2(1040, 720));
-            Add("library-wide", () => { _window.Show("library"); Click(Q("tab-scenario")); }, min: 6, size: new Vector2(1040, 720));
+            Add("create-wide", () => { _window.Show("create"); FormToTop(); }, min: 4, size: new Vector2(1040, 720));
+            Add("library-wide", () =>
+            {
+                _window.Show("library");
+                Click(_window.ViewForTests("library").Query<Label>().Where(l => l.text == "All" && l.parent.ClassListContains("sc-chip")).First()?.parent);
+            }, min: 6, size: new Vector2(1040, 720));
+            Add("hero", () =>
+            {
+                // The README image: a neutral workspace name (restored at the end) and no test pattern.
+                _projectName = ScenarioUserSettings.instance.ProjectName;
+                ScenarioUserSettings.instance.ProjectName = "Treasure Hunt";
+                typeof(ScenarioWindow).GetMethod("UpdateHeader", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(_window, null);
+                foreach (var row in S.Ledger.Jobs.Where(r => r.Prompt == "acceptance-source").ToList()) S.Dismiss(row);
+                _window.Show("create");
+                _window.Create.SelectType("image", true);
+                _window.Create.SetPrompt("A stylized wooden treasure chest, game prop, clean background");
+                FormToTop();
+            }, min: 8, max: 40, size: new Vector2(1040, 720));
+            Add("inspector-generated", () =>
+            {
+                var row = S.Ledger.Jobs.LastOrDefault(r => r.OutputType == "image" && r.Imported && r.Files.Count > 0);
+                if (row != null) Selection.activeObject = AssetDatabase.LoadMainAssetAtPath(row.Files[0]);
+                Inspector().position = new Rect(520, 40, 420, 560);
+            }, min: 3, capture: Inspector);
+            Add("inspector-model", () =>
+            {
+                var row = LastModel();
+                if (row != null) Selection.activeObject = AssetDatabase.LoadMainAssetAtPath(row.Files.First(f => f.EndsWith(".glb")));
+                Inspector().position = new Rect(520, 40, 420, 560);
+            }, min: 4, capture: Inspector);
             Begin();
         }
 
-        static void Add(string name, Action setup, float min = 1.5f, float max = 20f, Vector2? size = null, bool both = true)
-            => Steps.Add(new Step { Name = name, Setup = setup, MinWait = min, MaxWait = max, Size = size ?? new Vector2(460, 780), BothThemes = both });
+        /// <summary>A generated character for the 3D step shots: the knight from the paid acceptance run when there.</summary>
+        /// <summary>Earlier steps leave the form scrolled to its settings.</summary>
+        static void FormToTop() => _window.rootVisualElement.schedule.Execute(() =>
+        {
+            foreach (var scroll in _window.ViewForTests("create").Query<ScrollView>().ToList()) scroll.scrollOffset = Vector2.zero;
+        }).ExecuteLater(300);
+
+        static JobRow LastModel()
+        {
+            var models = S.Ledger.Jobs.Where(r => r.OutputType == "model3d" && r.Imported && r.AssetIds.Count > 0 && r.Files.Any(f => f.EndsWith(".glb"))).ToList();
+            return models.FirstOrDefault(r => r.Files.Any(f => f.Contains("knight"))) ?? models.FirstOrDefault();
+        }
+
+        static void StartModelStep(string stepId)
+        {
+            var row = LastModel();
+            if (row == null) { Report.Add("no generated model for " + stepId); return; }
+            var file = row.Files.First(f => f.EndsWith(".glb"));
+            var prefab = AssetDatabase.LoadMainAssetAtPath(file);
+            _window.Create.StartStep(OutputTypes.Step(stepId), new SlotItem { AssetId = row.AssetIds[0], Kind = "3d", Source = prefab, Label = Path.GetFileNameWithoutExtension(file) });
+        }
+
+        static void Add(string name, Action setup, float min = 1.5f, float max = 20f, Vector2? size = null, bool both = true, Func<EditorWindow> capture = null)
+            => Steps.Add(new Step { Name = name, Setup = setup, MinWait = min, MaxWait = max, Size = size ?? new Vector2(460, 780), BothThemes = both, Capture = capture });
+
+        static EditorWindow _inspector;
+        static string _projectName;
+
+        static EditorWindow Inspector()
+        {
+            if (_inspector == null) _inspector = EditorWindow.GetWindow(typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.InspectorWindow"));
+            return _inspector;
+        }
 
         static void Begin()
         {
@@ -144,7 +230,7 @@ namespace ScenarioDev
                 if (elapsed < step.MinWait) return;
                 if (Busy() && elapsed < step.MaxWait) return;
                 var path = Path.Combine(_out, $"{_theme}-{Steps.IndexOf(step) + 1:00}-{step.Name}.png");
-                var error = WindowShots.Capture(_window, path);
+                var error = WindowShots.Capture(step.Capture != null ? step.Capture() : _window, path);
                 Report.Add($"{Path.GetFileName(path)} {(error.Length > 0 ? "ERROR " + error : "ok")} busy={Busy()} t={elapsed:0.0}");
                 _index++;
                 if (_theme == "light") while (_index < Steps.Count && !Steps[_index].BothThemes) _index++;
@@ -162,6 +248,7 @@ namespace ScenarioDev
         static void Finish()
         {
             EditorApplication.update -= Tick;
+            if (_projectName != null) ScenarioUserSettings.instance.ProjectName = _projectName;
             foreach (var line in Report) Debug.Log("SHOTS " + line);
             Debug.Log($"SHOTS done theme={_theme}");
             File.WriteAllLines(Path.Combine(_out, $"report-{_theme}.txt"), Report);

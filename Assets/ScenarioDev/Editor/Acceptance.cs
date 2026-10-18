@@ -190,7 +190,7 @@ namespace ScenarioDev
                 var field = fields.FirstOrDefault(f => f.Name == input.Key);
                 values[input.Key] = field != null && field.Type == FieldType.Files ? new JArray(input.Value) : input.Value;
             }
-            var problems = SchemaForm.Validate(fields, values);
+            var problems = SchemaForm.Validate(fields, values, c.Workflow.Length > 0 ? "" : c.Model);
             if (problems.Count > 0)
             {
                 c.Result = "form: " + string.Join(" ", problems);

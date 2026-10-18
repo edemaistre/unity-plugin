@@ -24,6 +24,8 @@ namespace Scenario.Editor.UI
         // Form state
         string _type;
         string _modelId = "";
+        /// <summary>The typed step that opened the form, while one of its models is selected.</summary>
+        AssetStep _step;
         JObject _schema;
         List<Field> _fields = new List<Field>();
         JObject _values = new JObject();
@@ -171,7 +173,9 @@ namespace Scenario.Editor.UI
             _split.Add(tray);
             var trayHeader = new VisualElement();
             trayHeader.AddToClassList("sc-tray-header");
-            trayHeader.Add(Ui.Text("RESULTS", "sc-section"));
+            var trayTitle = Ui.Text("RESULTS", "sc-section");
+            trayTitle.style.marginTop = trayTitle.style.marginBottom = 0; // centered with the count
+            trayHeader.Add(trayTitle);
             _trayCount = Ui.Text("", "sc-faint", "sc-small");
             _trayCount.style.marginLeft = 6;
             trayHeader.Add(_trayCount);
@@ -258,6 +262,7 @@ namespace Scenario.Editor.UI
         {
             if (!force && typeId == _type) return;
             _type = OutputTypes.Get(typeId).Id;
+            _step = null;
             var user = ScenarioUserSettings.instance;
             user.OutputType = _type;
             BuildTypes();
@@ -282,6 +287,7 @@ namespace Scenario.Editor.UI
             if (string.IsNullOrEmpty(modelId)) return;
             if (modelId != _modelId) ScenarioUserSettings.instance.SetModelFor(_type, modelId);
             _modelId = modelId;
+            if (_step != null && !_step.Models.Contains(modelId)) _step = null;
             _pendingValues = presetValues;
             _suggestOpen = false;
             _sparkCu = -1;
@@ -418,13 +424,23 @@ namespace Scenario.Editor.UI
             card.Add(change);
             _modelBox.Add(card);
 
-            if (type.QuickPicks.Length > 1)
+            // A step offers the models that do that step; otherwise the type's picks.
+            var pickIds = _step != null ? _step.Models.ToArray() : type.QuickPicks;
+            if (_step != null)
+            {
+                var stepLine = Ui.Text(_step.Title + (_step.Hint.Length > 0 ? ". " + _step.Hint : ""), "sc-dim", "sc-small");
+                stepLine.name = "step-hint";
+                stepLine.style.whiteSpace = WhiteSpace.Normal;
+                stepLine.style.marginBottom = 4;
+                _modelBox.Add(stepLine);
+            }
+            if (pickIds.Length > 1)
             {
                 var picks = new VisualElement();
                 picks.AddToClassList("sc-row-wrap");
                 picks.style.marginTop = -2;
                 picks.style.marginBottom = 4;
-                foreach (var id in type.QuickPicks.Where(p => S.Catalog.IsEmpty || S.Model(p) != null))
+                foreach (var id in pickIds.Where(p => S.Catalog.IsEmpty || S.Model(p) != null))
                 {
                     var pick = id;
                     var chip = Ui.Chip(ShortName(pick), null, pick == _modelId, () => SelectModel(pick), "sc-chip-sm");
@@ -441,7 +457,7 @@ namespace Scenario.Editor.UI
             var name = Name(modelId);
             foreach (var prefix in new[] { "Google ", "OpenAI ", "ByteDance ", "Alibaba ", "Hyper3D " })
                 if (name.StartsWith(prefix)) name = name.Substring(prefix.Length);
-            return name.Length > 26 ? name.Substring(0, 25) + "…" : name;
+            return name.Length > 30 ? name.Substring(0, 29) + "…" : name;
         }
 
         void OpenBrowser()
@@ -688,10 +704,44 @@ namespace Scenario.Editor.UI
 
         void SyncSlot(Field field)
         {
-            var ids = Items(field.Name).Where(i => i.AssetId.Length > 0).Select(i => i.AssetId).ToList();
+            // Inputs that refuse GLB get a converted copy; other inputs get the original back.
+            var format = SchemaForm.RequiredModelFormat(field);
+            foreach (var item in Items(field.Name).Where(i => i.AssetId.Length > 0 && !i.Uploading && i.Error.Length == 0 && i.Format != format).ToList())
+            {
+                if (format.Length > 0) _ = Convert(field, item, format);
+                else
+                {
+                    item.AssetId = item.OriginalAssetId;
+                    item.Format = "";
+                }
+            }
+            var ids = Items(field.Name).Where(i => i.AssetId.Length > 0 && !i.Uploading).Select(i => i.AssetId).ToList();
             if (ids.Count == 0) _values.Remove(field.Name);
             else if (field.Type == FieldType.File) _values[field.Name] = ids[0];
             else _values[field.Name] = new JArray(ids);
+        }
+
+        async Task Convert(Field field, SlotItem item, string format)
+        {
+            item.Uploading = true;
+            RedrawSlot(field);
+            var original = item.Format.Length > 0 ? item.OriginalAssetId : item.AssetId;
+            var result = await S.Convert(original, format);
+            item.Uploading = false;
+            if (result.Ok)
+            {
+                item.OriginalAssetId = original;
+                item.AssetId = result.Value;
+                item.Format = format;
+            }
+            else
+            {
+                item.Error = result.Error.Message;
+                Window.Toast(result.Error.Message, "error");
+            }
+            SyncSlot(field);
+            RedrawSlot(field);
+            FormChanged();
         }
 
         void RedrawSlot(Field field)
@@ -853,6 +903,7 @@ namespace Scenario.Editor.UI
                 if (fallback != null) model = fallback.Id;
             }
             _type = step.OutputType;
+            _step = step;
             ScenarioUserSettings.instance.OutputType = _type;
             BuildTypes();
             _slots.Clear();
@@ -891,7 +942,7 @@ namespace Scenario.Editor.UI
             foreach (var step in OutputTypes.StepsFor(kind))
             {
                 var s = step;
-                menu.AddItem(new GUIContent(prefix + s.Title), false, () => run(s));
+                menu.AddItem(new GUIContent(prefix + (s.Group.Length > 0 ? s.Group + "/" : "") + s.Title), false, () => run(s));
             }
             return menu;
         }
@@ -950,7 +1001,7 @@ namespace Scenario.Editor.UI
             else if (_schema == null) problems.Add(_schemaError.Length > 0 ? "The model could not be loaded." : S.Ready ? "Pick a model." : "Sign in first.");
             if (problems.Count > 0) return null;
             if (_slots.Values.SelectMany(v => v).Any(i => i.Uploading)) problems.Add("Uploading references…");
-            problems.AddRange(SchemaForm.Validate(_fields, _values));
+            problems.AddRange(SchemaForm.Validate(_fields, _values, _modelId));
             return new GenerateRequest
             {
                 OutputType = EffectiveType(),

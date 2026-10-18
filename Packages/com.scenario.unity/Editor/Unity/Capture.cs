@@ -25,6 +25,53 @@ namespace Scenario.Editor
             return Render(camera, 16, 9, maxSize, "main-camera");
         }
 
+        /// <summary>
+        /// The open scenes from a temporary camera, three-quarter view on everything that renders, for when
+        /// there is no Main Camera and no Scene view (a new empty scene, the Scene view closed, batch mode).
+        /// A temporary light is added only when the scenes have none. Both are removed after the render.
+        /// </summary>
+        public static string Overview(int maxSize = 1536)
+        {
+            var renderers = UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None);
+            var bounds = new Bounds(Vector3.zero, Vector3.one);
+            var first = true;
+            foreach (var renderer in renderers)
+            {
+                if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+                if (first) bounds = renderer.bounds; else bounds.Encapsulate(renderer.bounds);
+                first = false;
+            }
+            var made = new System.Collections.Generic.List<GameObject>();
+            try
+            {
+                var cameraObject = new GameObject("Scenario Overview Camera") { hideFlags = HideFlags.HideAndDontSave };
+                made.Add(cameraObject);
+                var camera = cameraObject.AddComponent<Camera>();
+                camera.clearFlags = CameraClearFlags.Skybox;
+                camera.fieldOfView = 40;
+                var radius = Mathf.Max(bounds.extents.magnitude, 0.5f);
+                var distance = radius / Mathf.Sin(camera.fieldOfView * 0.5f * Mathf.Deg2Rad) * 1.1f;
+                var direction = Quaternion.Euler(25, -35, 0) * Vector3.back;
+                cameraObject.transform.position = bounds.center + direction * distance;
+                cameraObject.transform.LookAt(bounds.center);
+                camera.nearClipPlane = Mathf.Max(0.01f, distance - radius * 2);
+                camera.farClipPlane = distance + radius * 4;
+                if (UnityEngine.Object.FindObjectsByType<Light>(FindObjectsSortMode.None).Length == 0)
+                {
+                    var lightObject = new GameObject("Scenario Overview Light") { hideFlags = HideFlags.HideAndDontSave };
+                    made.Add(lightObject);
+                    var light = lightObject.AddComponent<Light>();
+                    light.type = LightType.Directional;
+                    lightObject.transform.rotation = Quaternion.Euler(50, -30, 0);
+                }
+                return Render(camera, 16, 9, maxSize, "overview");
+            }
+            finally
+            {
+                foreach (var go in made) UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
+
         public static string Render(Camera camera, float aspectWidth, float aspectHeight, int maxSize, string label)
         {
             var aspect = aspectHeight > 0 ? aspectWidth / aspectHeight : 1;

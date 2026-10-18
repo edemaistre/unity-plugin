@@ -32,6 +32,7 @@ ICONS = {
     "audio": '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 10.5v3"/>',
     "material": '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c-3 3-3 14 0 17M12 3.5c3 3 3 14 0 17"/>',
     "skybox": '<path d="M2.5 16.5c3-4 5.5-6 8-6s4 2 6 2 3.5-1 5-2.5"/><path d="M2.5 20.5h19"/><circle cx="17" cy="6" r="2.3"/>',
+    "motion": '<circle cx="13.5" cy="4.5" r="1.8"/><path d="M8 21l3-6 2.5 2V22M11 15l1.5-6.5L9 10l-2.5 3M12.5 8.5l2.5 3 3.5 1"/>',
     "grid": '<circle cx="6" cy="6" r="1.4"/><circle cx="12" cy="6" r="1.4"/><circle cx="18" cy="6" r="1.4"/><circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/><circle cx="6" cy="18" r="1.4"/><circle cx="12" cy="18" r="1.4"/><circle cx="18" cy="18" r="1.4"/>',
     # actions
     "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20.5 20.5"/>',

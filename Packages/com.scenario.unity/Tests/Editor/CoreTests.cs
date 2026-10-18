@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -425,9 +426,122 @@ namespace Scenario.Editor.Tests
         {
             foreach (var type in OutputTypes.List.Where(t => t.Id != OutputTypes.All))
                 Assert.IsNotEmpty(type.QuickPicks, type.Id);
-            Assert.AreEqual(9, OutputTypes.StepsFor("image").Count());
-            Assert.AreEqual("model_meshy-rigging", OutputTypes.Step("rig").DefaultModel);
+            Assert.AreEqual(10, OutputTypes.StepsFor("image").Count());
+            Assert.AreEqual("model_uthana-character-rigging", OutputTypes.Step("rig").DefaultModel);
             Assert.AreEqual("PBR", (string)OutputTypes.Presets("model_rodin-hyper3d-v2-5")["material"]);
+        }
+
+        [Test]
+        public void ThreeDSteps_CoverEveryOperation_InGroups()
+        {
+            var ids = OutputTypes.StepsFor("3d").Select(s => s.Id).ToList();
+            CollectionAssert.IsSubsetOf(new[] { "retexture", "uv", "edit-3d", "retopo", "remesh", "refine", "rig", "rig-creature", "animate-3d", "motion", "motion-video", "parts", "stylize" }, ids);
+            foreach (var step in OutputTypes.StepsFor("3d"))
+            {
+                Assert.IsNotEmpty(step.Group, step.Id);
+                Assert.IsNotEmpty(step.Hint, step.Id);
+                Assert.AreEqual(step.Models.Count(), step.Models.Distinct().Count(), step.Id + " lists a model twice");
+            }
+            Assert.AreEqual(OutputTypes.Motion, OutputTypes.Step("animate-3d").OutputType);
+            CollectionAssert.Contains(OutputTypes.Step("rig").Models.ToList(), "model_uthana-character-rigging");
+            Assert.AreEqual("model_cartwheel-video-to-motion", OutputTypes.Step("video-motion", "video").DefaultModel);
+            // Every model a step names has a display name before the catalog loads.
+            foreach (var model in OutputTypes.Steps.SelectMany(s => s.Models).Concat(OutputTypes.List.SelectMany(t => t.QuickPicks)))
+                Assert.IsNotNull(OutputTypes.KnownName(model), model);
+        }
+
+        [Test]
+        public void MotionModels_HaveTheirOwnType()
+        {
+            ModelInfo M(string id, params string[] caps) => new ModelInfo { Id = id, Capabilities = caps.ToList() };
+            Assert.AreEqual(OutputTypes.Motion, OutputTypes.TypeFor(M("model_cartwheel-text-to-motion", "txt23d", "3d23d")));
+            Assert.AreEqual(OutputTypes.Motion, OutputTypes.TypeFor(M("model_meshy-animation", "3d23d")));
+            Assert.AreEqual(OutputTypes.Motion, OutputTypes.TypeFor(M("model_uthana-video-to-motion-2.1", "video23d")));
+            Assert.AreEqual(OutputTypes.Model3D, OutputTypes.TypeFor(M("model_meshy-rigging", "3d23d")));
+            Assert.IsTrue((bool)OutputTypes.Presets("model_meshy-7-1-txt23d")["shouldRemesh"]);
+            Assert.IsTrue((bool)OutputTypes.Presets("model_tripo-rigging-v1")["includeRiggedModel"]);
+        }
+    }
+
+    public class ThreeDInputTests
+    {
+        static Field ModelInput(string description) => new Field { Name = "model", Type = FieldType.File, Kind = "3d", Description = description };
+
+        [Test]
+        public void InputsThatRefuseGlb_AskForAConversion()
+        {
+            Assert.AreEqual("fbx", SchemaForm.RequiredModelFormat(ModelInput("Source 3D model file. Supported format: FBX. Maximum: 100,000 faces.")));
+            Assert.AreEqual("", SchemaForm.RequiredModelFormat(ModelInput("Upload a GLB file of the 3D model you want to retexture.")));
+            Assert.AreEqual("", SchemaForm.RequiredModelFormat(ModelInput("Source 3D file. Supported formats: GLB, OBJ, FBX, STL.")));
+            Assert.AreEqual("", SchemaForm.RequiredModelFormat(ModelInput("The 3D character you want to animate.")));
+            Assert.AreEqual("", SchemaForm.RequiredModelFormat(new Field { Kind = "image", Description = "Supported format: FBX" }));
+        }
+
+        [Test]
+        public void ModelNeeds_AskForTheInputScenarioPricesWith()
+        {
+            var fields = new List<Field>
+            {
+                new Field { Name = "prompt", Type = FieldType.Prompt, Required = true },
+                new Field { Name = "characterModel", Type = FieldType.File, Kind = "3d" },
+                new Field { Name = "characterFile", Type = FieldType.File, Kind = "image" },
+            };
+            var values = new JObject { ["prompt"] = "walks forward" };
+            Assert.IsEmpty(SchemaForm.Validate(fields, values), "no model, no extra rule");
+            Assert.AreEqual(new[] { "Add a character: a 3D model, or an image of one." }, SchemaForm.Validate(fields, values, "model_cartwheel-text-to-motion"));
+            values["characterFile"] = "asset_image";
+            Assert.IsEmpty(SchemaForm.Validate(fields, values, "model_cartwheel-text-to-motion"), "either input will do");
+
+            var retexture = new List<Field>
+            {
+                new Field { Name = "model", Type = FieldType.File, Kind = "3d", Required = true },
+                new Field { Name = "retexture", Type = FieldType.Boolean },
+                new Field { Name = "referenceImage", Type = FieldType.File, Kind = "image" },
+            };
+            var set = new JObject { ["model"] = "asset_chest", ["retexture"] = true };
+            Assert.AreEqual(new[] { "Add a reference image, or turn off Retexture." }, SchemaForm.Validate(retexture, set, "model_yvo3d-retexture"));
+            set["retexture"] = false;
+            Assert.IsEmpty(SchemaForm.Validate(retexture, set, "model_yvo3d-retexture"), "keeping the textures needs no reference");
+        }
+
+        [Test]
+        public void OptionLabels_ReadAsWords()
+        {
+            Assert.AreEqual("Biped walk", SchemaForm.OptionLabel("biped:walk"));
+            Assert.AreEqual("Quadruped walk", SchemaForm.OptionLabel("quadruped:walk"));
+            Assert.AreEqual("Change fps", SchemaForm.OptionLabel("change_fps"));
+            Assert.AreEqual("16:9", SchemaForm.OptionLabel("16:9"));
+            Assert.AreEqual("triangle", SchemaForm.OptionLabel("triangle"));
+            Assert.AreEqual("None", SchemaForm.OptionLabel(""));
+        }
+
+        [Test]
+        public void ResultCompanions_AndSplats_AreRecognised()
+        {
+            JObject A(string mime, string type = "") => new JObject { ["mimeType"] = mime, ["kind"] = "3d", ["metadata"] = new JObject { ["type"] = type } };
+            Assert.IsTrue(Files.IsModelCompanion(A("model/obj", "txt23d")));
+            Assert.IsTrue(Files.IsModelCompanion(A("model/mtl", "3d-texture-mtl")));
+            Assert.IsTrue(Files.IsModelCompanion(new JObject { ["mimeType"] = "image/png", ["kind"] = "image", ["metadata"] = new JObject { ["type"] = "3d-texture-albedo" } }));
+            Assert.IsFalse(Files.IsModelCompanion(A("model/gltf-binary", "txt23d")));
+            Assert.IsTrue(Files.IsSplat(A("model/spz", "img2splat")));
+            Assert.IsFalse(Files.IsSplat(A("model/x-3d-vox", "txt23d")));
+            Assert.AreEqual("spz", Files.ExtensionForMime("model/spz"));
+            Assert.AreEqual("ply", Files.SniffExtension(Encoding.ASCII.GetBytes("ply\nformat binary_little_endian 1.0")));
+        }
+
+        [Test]
+        public void MotionLibrary_FindsMotionsByName()
+        {
+            MotionLibrary.Reset();
+            Assert.AreEqual(656, MotionLibrary.All.Count, "the shipped library");
+            Assert.AreEqual("Casual Walk", MotionLibrary.Find(30).Name);
+            Assert.AreEqual("Walking", MotionLibrary.Find(30).Group);
+            var walks = MotionLibrary.Search("casual walk");
+            Assert.IsTrue(walks.Any(m => m.Id == 30));
+            Assert.IsTrue(MotionLibrary.Search("", "Dancing").All(m => m.Category == "Dancing"));
+            Assert.IsTrue(MotionLibrary.Search("30").Any(m => m.Id == 30), "an id finds its motion");
+            Assert.IsTrue(MotionLibrary.IsActionField(new Field { Name = "actionId", Type = FieldType.Integer, Description = "The animation to apply, given as its ID number from Meshy's animation library." }));
+            Assert.IsFalse(MotionLibrary.IsActionField(new Field { Name = "seed", Type = FieldType.Integer }));
         }
     }
 }

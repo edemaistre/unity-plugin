@@ -116,6 +116,20 @@ namespace Scenario.Editor.Tests
         }
 
         [Test]
+        public void MotionsFind_SearchesTheLibrary_WithoutSigningIn()
+        {
+            MotionLibrary.Reset();
+            var result = CallTool("motions_find", new JObject { ["query"] = "casual walk", ["limit"] = 5 });
+            Assert.IsNull(result["isError"], TextOf(result));
+            var data = JObject.Parse(TextOf(result));
+            Assert.IsTrue(data["motions"].Any(m => (int)m["id"] == 30 && (string)m["name"] == "Casual Walk"), TextOf(result));
+            Assert.LessOrEqual(((JArray)data["motions"]).Count, 5);
+            var dances = JObject.Parse(TextOf(CallTool("motions_find", new JObject { ["category"] = "Dancing" })));
+            Assert.IsTrue(dances["motions"].All(m => (string)m["category"] == "Dancing"));
+            Assert.AreEqual(33, (int)dances["total"]);
+        }
+
+        [Test]
         public void UnknownTool_IsAToolError()
         {
             var result = CallTool("does_not_exist", null);
@@ -205,6 +219,28 @@ namespace Scenario.Editor.Tests
             finally
             {
                 if (cube != null) UnityEngine.Object.DestroyImmediate(cube);
+            }
+        }
+
+        [Test]
+        public void Overview_ShowsTheScene_WhenThereIsNoCameraToCapture()
+        {
+            // A new empty scene, a closed Scene view or a batch editor: capture_view falls back to this.
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Rendering needs a graphics device.");
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            try
+            {
+                var path = Capture.Overview(256);
+                Assert.IsTrue(System.IO.File.Exists(path), path);
+                var image = new Texture2D(2, 2);
+                image.LoadImage(System.IO.File.ReadAllBytes(path));
+                Assert.AreNotEqual(image.GetPixel(image.width / 2, image.height / 2), image.GetPixel(2, 2), "the cube is in the middle of the frame");
+                UnityEngine.Object.DestroyImmediate(image);
+                Assert.IsNull(GameObject.Find("Scenario Overview Camera"), "the temporary camera is gone");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(cube);
             }
         }
 

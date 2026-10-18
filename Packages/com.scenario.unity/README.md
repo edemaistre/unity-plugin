@@ -1,6 +1,6 @@
 # Scenario for Unity
 
-Generate images, video, 3D models, PBR materials, skyboxes and audio with every Scenario model inside the Unity Editor, with the price shown before anything is spent. Results land as wired Unity assets with their provenance. AI agents (Claude Code, Codex, Cursor, VS Code) can drive it through a local MCP server.
+Generate images, video, 3D models, character animations, PBR materials, skyboxes and audio with every Scenario model inside the Unity Editor, with the price shown before anything is spent. 3D models can then be retextured, edited, remeshed, rigged, animated or split without leaving Unity. Results land as wired Unity assets with their provenance. AI agents (Claude Code, Codex, Cursor, VS Code) can drive it through a local MCP server.
 
 Open **Window > Scenario** (Alt+Shift+S) and sign in with your Scenario account or an API key.
 
