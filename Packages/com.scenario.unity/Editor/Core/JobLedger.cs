@@ -219,6 +219,18 @@ namespace Scenario.Editor.Core
 
         public void Dismiss(string localId, double now) => SetState(localId, JobState.Dismissed, "", now);
 
+        /// <summary>A paid call that answers at once (Prompt Spark): done and charged, nothing to import.</summary>
+        public void MarkCharged(string localId, double cu, double now)
+        {
+            var row = Find(localId);
+            if (row == null) return;
+            row.State = JobState.Success;
+            row.ChargedCu = cu;
+            row.Imported = true;
+            row.UpdatedAt = now;
+            Save();
+        }
+
         public void MarkImported(string localId, List<string> files, double now)
         {
             var row = Find(localId);
@@ -275,7 +287,11 @@ namespace Scenario.Editor.Core
                 var candidates = new List<JObject>();
                 foreach (var token in serverJobs)
                 {
-                    if (!(token is JObject job) || Json.Str(job, "modelId") != row.ModelId) continue;
+                    if (!(token is JObject job)) continue;
+                    var same = row.WorkflowId.Length > 0
+                        ? Json.Str(job, "workflowId") == row.WorkflowId
+                        : row.ModelId.Length > 0 && Json.Str(job, "modelId") == row.ModelId;
+                    if (!same) continue;
                     var jobId = Json.Str(job, "jobId");
                     if (jobId.Length == 0 || FindByJob(jobId) != null) continue;
                     var created = Json.IsoToUnix(Json.Str(job, "createdAt"));

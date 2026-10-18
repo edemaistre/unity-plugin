@@ -46,6 +46,57 @@ namespace Scenario.Editor.Core
 
     public static class OutputTypes
     {
+        /// <summary>
+        /// Names of the models this file refers to, as the catalog listed them on 2026-10-18.
+        /// Shown only until the catalog has loaded (first open of a project).
+        /// </summary>
+        static readonly Dictionary<string, string> KnownNames = new Dictionary<string, string>
+        {
+            ["model_openai-gpt-image-2-5-sunburst"] = "GPT Image 2.5 Sunburst",
+            ["model_openai-gpt-image-2-5-flare"] = "GPT Image 2.5 Flare",
+            ["model_google-gemini-nano-banana-2-1"] = "Nano Banana 2.1",
+            ["model_bytedance-seedream-5-0-pro"] = "Seedream 5.0 Pro",
+            ["model_retrodiffusion-plus"] = "Retro Diffusion Plus",
+            ["model_minimax-h3"] = "Minimax H3",
+            ["model_google-omni-1-1-flash"] = "Gemini Omni 1.1 Flash",
+            ["model_alibaba-wan-3-0"] = "Wan 3.0",
+            ["model_bytedance-seedance-2-5"] = "Seedance 2.5",
+            ["model_meshy-7-1-txt23d"] = "Meshy 7.1 - Text-to-3D",
+            ["model_meshy-7-1-img23d"] = "Meshy 7.1 - Image to 3D",
+            ["model_rodin-hyper3d-v2-5-text-to-3d"] = "Rodin Gen-2.5 Text to 3D",
+            ["model_hunyuan-3d-pro-3-1-i23d"] = "Hunyuan 3D 3.1 Pro",
+            ["model_tripo-p2-text-to-3d"] = "Tripo P2 Text to 3D",
+            ["model_meshy-t2-5-smart-topology"] = "Meshy T2.5 Smart Topology",
+            ["model_mirelo-sfx-2-0-text-to-audio"] = "Mirelo SFX 2.0 Text to Audio",
+            ["model_elevenlabs-sound-effects-v2"] = "ElevenLabs Sound Effects 2",
+            ["model_sonilo-v1-1-text-to-sound-effects"] = "Sonilo V1.1 Text to SFX",
+            ["model_elevenlabs-music-v2-5"] = "ElevenLabs Music v2.5",
+            ["model_google-gemini-3-8-flash-tts"] = "Gemini 3.8 Flash TTS",
+            ["model_patina-material"] = "PATINA Material",
+            ["model_patina"] = "PATINA Image to Maps",
+            ["model_patina-material-extract"] = "PATINA Material Extract",
+            ["model_scenario-skybox-gpt"] = "Scenario Skybox GPT",
+            ["model_scenario-skybox-flux"] = "Scenario Skybox Flux.1",
+            ["model_hunyuan-world-image-to-skybox"] = "HY World - Image to Skybox",
+            ["model_rodin-hyper3d-v2-5"] = "Rodin Gen-2.5",
+            ["model_birefnet-background-removal"] = "Birefnet Background Removal",
+            ["model_clarity-pro-upscaler"] = "Clarity Pro Upscaler",
+            ["model_sc-vectorizer"] = "Scenario Vectorize",
+            ["model_sc-pixelate"] = "Pixelate",
+            ["model_meshy-7-retexture"] = "Meshy 7 - Retexture",
+            ["model_tripo-retopology-v3"] = "Tripo Retopology v3",
+            ["model_tripo-smart-uv"] = "Tripo Smart UV",
+            ["model_meshy-rigging"] = "Meshy Rigging",
+            ["model_scenario-claude-opus-5-5-3d"] = "Claude Opus 5.5 3D",
+            ["model_tripo-segmentation-v2"] = "Tripo Segmentation v2",
+            ["model_kandinsky-6-vsr-video-upscale"] = "Kandinsky 6.0 VSR Video Upscale",
+            ["model_mirelo-sfx-2-0-video-to-audio"] = "Mirelo SFX 2.0 Video to Audio",
+            ["model_elevenlabs-voice-changer"] = "ElevenLabs Voice Changer",
+            ["model_elevenlabs-voice-isolator"] = "ElevenLabs Voice Isolator",
+        };
+
+        public static string KnownName(string modelId) => modelId != null && KnownNames.TryGetValue(modelId, out var name) ? name : null;
+
         public const string Image = "image";
         public const string Video = "video";
         public const string Model3D = "model3d";

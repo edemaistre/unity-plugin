@@ -50,6 +50,7 @@ namespace Scenario.Editor.Core
         public static string KindOf(JObject asset)
         {
             var kind = Json.Str(asset, "kind");
+            if (kind.Length == 0) kind = Json.Str(asset?["metadata"], "kind");
             if (kind.Length > 0) return kind;
             var mime = Json.Str(asset, "mimeType");
             if (mime.Length == 0) mime = Json.Str(asset?["metadata"], "mimeType");

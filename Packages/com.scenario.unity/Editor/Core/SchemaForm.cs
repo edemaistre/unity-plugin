@@ -61,7 +61,8 @@ namespace Scenario.Editor.Core
         public static List<Field> FieldsFromSchema(JObject schema, IDictionary<string, JToken[]> restrict = null)
         {
             var fields = new List<Field>();
-            if (!(schema?["parameters"] is JArray parameters)) return fields;
+            var parameters = schema?["parameters"] as JArray ?? schema?["inputs"] as JArray;
+            if (parameters == null) return fields;
             foreach (var token in parameters)
             {
                 if (!(token is JObject p) || p["name"] == null) continue;
@@ -87,11 +88,12 @@ namespace Scenario.Editor.Core
         {
             var name = (string)p["name"];
             var rawType = Json.Str(p, "type", "string");
-            var options = p["allowed_values"] is JArray values ? values.ToList() : new List<JToken>();
+            var options = p["allowed_values"] is JArray values ? values.ToList()
+                : p["allowedValues"] is JArray raw ? raw.ToList() : new List<JToken>();
             var field = new Field
             {
                 Name = name,
-                Label = Humanize(name),
+                Label = Json.Str(p, "label").Length > 0 ? Json.Str(p, "label") : Humanize(name),
                 Description = Json.Str(p, "description"),
                 Required = Json.Truthy(p["required"]),
                 Default = p["default"]?.DeepClone(),
@@ -102,7 +104,7 @@ namespace Scenario.Editor.Core
                 Kind = Json.Str(p, "kind"),
                 MaxItems = rawType.EndsWith("array") ? (int)Json.Num(p, "max_length") : 0,
                 MaxLength = rawType == "string" ? (int)Json.Num(p, "max_length") : 0,
-                CostImpact = Json.Truthy(p["cost_impact"]),
+                CostImpact = Json.Truthy(p["cost_impact"]) || Json.Truthy(p["costImpact"]),
                 PromptSpark = Json.Truthy(p["prompt_spark"]),
             };
             switch (rawType)

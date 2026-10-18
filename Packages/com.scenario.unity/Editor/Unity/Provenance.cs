@@ -25,6 +25,8 @@ namespace Scenario.Editor
         public string CreatedAt = "";
         public string TeamId = "";
         public string ProjectId = "";
+        /// <summary>Creative Units of the whole job (charged when known, else quoted).</summary>
+        public double Cu;
 
         public string WebUrl => AssetId.Length > 0 ? $"https://app.scenario.com/assets/{AssetId}" : "";
     }

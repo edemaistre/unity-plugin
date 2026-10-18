@@ -30,6 +30,7 @@ namespace Scenario.Editor
         public JObject Parameters = new JObject();
         /// <summary>Overrides the dated type folder.</summary>
         public string Folder = "";
+        public double Cu;
     }
 
     /// <summary>
@@ -107,6 +108,7 @@ namespace Scenario.Editor
                     CreatedAt = DateTime.UtcNow.ToString("o"),
                     TeamId = client.TeamId,
                     ProjectId = client.ProjectId,
+                    Cu = context.Cu,
                 });
             }
             return Result<List<ImportedFile>>.Success(imported);
@@ -135,6 +137,12 @@ namespace Scenario.Editor
                 texture.textureType = TextureImporterType.Sprite;
                 texture.spriteImportMode = SpriteImportMode.Single;
                 texture.alphaIsTransparency = true;
+                texture.spritePixelsPerUnit = Mathf.Max(1, settings.PixelsPerUnit);
+                changed = true;
+            }
+            if (outputType == OutputTypes.Image && texture.filterMode != settings.ImageFilter)
+            {
+                texture.filterMode = settings.ImageFilter;
                 changed = true;
             }
             if (texture.maxTextureSize < 4096)
@@ -143,6 +151,32 @@ namespace Scenario.Editor
                 changed = true;
             }
             if (changed) texture.SaveAndReimport();
+        }
+
+        /// <summary>Imported files of a finished job, rebuilt from their paths and provenance.</summary>
+        public static List<ImportedFile> FromPaths(IEnumerable<string> paths)
+        {
+            var list = new List<ImportedFile>();
+            foreach (var path in paths ?? new string[0])
+            {
+                if (string.IsNullOrEmpty(path) || AssetDatabase.LoadMainAssetAtPath(path) == null) continue;
+                var info = Provenance.Read(path);
+                list.Add(new ImportedFile
+                {
+                    Path = path,
+                    AssetId = info?.AssetId ?? "",
+                    Role = string.IsNullOrEmpty(info?.Role) ? "main" : info.Role,
+                    Kind = KindOfPath(path),
+                });
+            }
+            return list;
+        }
+
+        public static string KindOfPath(string path)
+        {
+            var ext = System.IO.Path.GetExtension(path ?? "").TrimStart('.').ToLowerInvariant();
+            if (ext == "glb" || ext == "gltf" || ext == "fbx" || ext == "obj" || ext == "prefab") return "3d";
+            return Files.UploadTypeFor(path)?.Kind ?? "image";
         }
 
         /// <summary>The main file of a result set: the panorama, the albedo, the model, or the first file.</summary>

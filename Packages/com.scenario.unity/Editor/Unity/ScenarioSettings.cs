@@ -17,6 +17,14 @@ namespace Scenario.Editor
         public int ConfirmAboveCu = 100;
         [Tooltip("Sprites instead of plain textures for images (2D projects).")]
         public bool ImagesAsSprites;
+        [Tooltip("Sprite pixels per unit for imported images.")]
+        public float PixelsPerUnit = 100;
+        [Tooltip("Point for pixel art, bilinear otherwise.")]
+        public FilterMode ImageFilter = FilterMode.Bilinear;
+        [Tooltip("Add a MeshCollider to placed 3D models.")]
+        public bool AddCollider;
+        [Tooltip("Frame placed objects in the Scene view.")]
+        public bool FrameAfterPlace = true;
 
         public void Save() => Save(true);
     }
@@ -45,7 +53,6 @@ namespace Scenario.Editor
 
         public bool AgentEnabled;
         public int AgentPort = 8791;
-        public string AgentToken = "";
         public int AgentAutoApproveCu = 20;
         public int AgentSessionBudgetCu = 300;
         public bool AgentCanEditScene = true;
@@ -79,14 +86,18 @@ namespace Scenario.Editor
             return added;
         }
 
-        public string EnsureAgentToken()
+        const string TokenPref = "Scenario.AgentToken";
+
+        /// <summary>The agent bridge token: per user and machine (EditorPrefs), outside the project.</summary>
+        public string EnsureAgentToken(bool regenerate = false)
         {
-            if (string.IsNullOrEmpty(AgentToken))
+            var token = EditorPrefs.GetString(TokenPref, "");
+            if (regenerate || string.IsNullOrEmpty(token))
             {
-                AgentToken = "sut_" + Core.OAuthClient.RandomToken(24);
-                Save();
+                token = "sut_" + Core.OAuthClient.RandomToken(24);
+                EditorPrefs.SetString(TokenPref, token);
             }
-            return AgentToken;
+            return token;
         }
 
         public void Save() => Save(true);

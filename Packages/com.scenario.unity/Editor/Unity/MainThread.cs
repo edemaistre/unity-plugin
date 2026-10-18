@@ -46,7 +46,6 @@ namespace Scenario.Editor
                 try { done.SetResult(work()); }
                 catch (Exception e) { done.SetException(e); }
             });
-            EditorApplication.QueuePlayerLoopUpdate();
             return done.Task;
         }
 
@@ -71,11 +70,7 @@ namespace Scenario.Editor
                 }, TaskContinuationOptions.ExecuteSynchronously);
             }
             if (IsMainThread) Start();
-            else
-            {
-                Queue.Enqueue(Start);
-                EditorApplication.QueuePlayerLoopUpdate();
-            }
+            else Queue.Enqueue(Start);
             return done.Task;
         }
     }

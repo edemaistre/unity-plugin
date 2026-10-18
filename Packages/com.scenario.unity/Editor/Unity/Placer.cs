@@ -83,12 +83,23 @@ namespace Scenario.Editor
             {
                 Selection.objects = result.Objects.Cast<Object>().ToArray();
                 EditorGUIUtility.PingObject(result.Objects[0]);
+                if (ScenarioProjectSettings.instance.FrameAfterPlace && SceneView.lastActiveSceneView != null && !Application.isBatchMode)
+                    SceneView.lastActiveSceneView.FrameSelected();
             }
             else if (result.Asset == null)
             {
                 result.Asset = AssetDatabase.LoadMainAssetAtPath(main.Path);
             }
             return result;
+        }
+
+        /// <summary>Hierarchy path of a scene object ("Root/Child").</summary>
+        public static string PathOf(GameObject go)
+        {
+            if (go == null) return "";
+            var names = new List<string>();
+            for (var t = go.transform; t != null; t = t.parent) names.Insert(0, t.name);
+            return string.Join("/", names);
         }
 
         public static Vector3 Pivot()
@@ -113,6 +124,10 @@ namespace Scenario.Editor
             var bounds = Bounds(instance);
             if (bounds.size != Vector3.zero) instance.transform.position += Vector3.up * (position.y - bounds.min.y);
             Undo.RegisterCreatedObjectUndo(instance, "Place Scenario model");
+            if (ScenarioProjectSettings.instance.AddCollider)
+                foreach (var filter in instance.GetComponentsInChildren<MeshFilter>())
+                    if (filter.sharedMesh != null && filter.GetComponent<Collider>() == null)
+                        Undo.AddComponent<MeshCollider>(filter.gameObject).sharedMesh = filter.sharedMesh;
             result.Objects.Add(instance);
         }
 
@@ -265,6 +280,8 @@ namespace Scenario.Editor
             else Undo.RecordObject(source, "Apply Scenario audio");
             source.clip = clip;
             source.playOnAwake = false;
+            // Spatial in 3D scenes, flat in 2D ones (and on UI or music hosts the user picked).
+            if (target == null) source.spatialBlend = EditorSettings.defaultBehaviorMode == EditorBehaviorMode.Mode2D ? 0f : 1f;
             result.Objects.Add(host);
         }
 

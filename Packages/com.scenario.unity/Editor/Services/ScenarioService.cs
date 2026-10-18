@@ -37,6 +37,8 @@ namespace Scenario.Editor
         public string OutputType = OutputTypes.Image;
         public string ModelId = "";
         public string ModelName = "";
+        /// <summary>Set to run a workflow instead of a model (its inputs go in Payload).</summary>
+        public string WorkflowId = "";
         public JObject Payload = new JObject();
         public string Prompt = "";
         /// <summary>Place the result in the scene when it is imported.</summary>
@@ -159,6 +161,8 @@ namespace Scenario.Editor
             }
             var user = ScenarioUserSettings.instance;
             Client.SetScope(user.TeamId, user.ProjectId);
+            // An API key sees only its own project: read its name for the header (free).
+            if (Client.Auth is ApiKeyAuth) EditorApplication.delayCall += () => _ = LoadTeams();
         }
 
         void UseOAuth(string clientId, OAuthTokens tokens, string email)
@@ -406,13 +410,22 @@ namespace Scenario.Editor
 
         public string Fingerprint(string modelId, JObject payload) => QuoteBook.Fingerprint(modelId, payload, ScopeKey);
 
+        public string Fingerprint(GenerateRequest request) => string.IsNullOrEmpty(request.WorkflowId)
+            ? Fingerprint(request.ModelId, request.Payload)
+            : QuoteBook.Fingerprint("workflow:" + request.WorkflowId, request.Payload, ScopeKey);
+
         /// <summary>Free price check. The quote it stores is the only way to generate.</summary>
-        public async Task<Result<QuoteBook.Quote>> Estimate(string modelId, JObject payload)
+        public Task<Result<QuoteBook.Quote>> Estimate(string modelId, JObject payload)
+            => Estimate(new GenerateRequest { ModelId = modelId, Payload = payload });
+
+        public async Task<Result<QuoteBook.Quote>> Estimate(GenerateRequest request)
         {
             if (EstimateAlarm)
                 return Result<QuoteBook.Quote>.Fail(ErrorKind.EstimateJob, "Price checks are paused: an earlier check returned a job. Check recent jobs, then restart Unity to resume.");
-            var fingerprint = Fingerprint(modelId, payload);
-            var price = await Client.Estimate(modelId, payload);
+            var fingerprint = Fingerprint(request);
+            var price = string.IsNullOrEmpty(request.WorkflowId)
+                ? await Client.Estimate(request.ModelId, request.Payload)
+                : await Client.EstimateWorkflow(request.WorkflowId, request.Payload);
             if (!price.Ok)
             {
                 if (price.Error.Kind == ErrorKind.EstimateJob)
@@ -430,6 +443,18 @@ namespace Scenario.Editor
 
         public QuoteBook.Quote QuoteFor(string modelId, JObject payload) => Quotes.Usable(Fingerprint(modelId, payload), Json.Now());
 
+        public QuoteBook.Quote QuoteFor(GenerateRequest request) => Quotes.Usable(Fingerprint(request), Json.Now());
+
+        /// <summary>Why a request cannot be sent right now, or "" when it can (quote aside).</summary>
+        public string BlockReason(GenerateRequest request)
+        {
+            if (!IsSignedIn) return "Sign in to Scenario first.";
+            if (!Ready) return "Pick a Scenario project first.";
+            if (Client.SpendingDisabled) return "Spending is turned off in Scenario settings.";
+            if (Ledger.Blocks(Fingerprint(request))) return "The same request is still unresolved: it may have started on Scenario. Check it in Jobs.";
+            return "";
+        }
+
         /// <summary>
         /// Paid. Needs a fresh quote for exactly this request; writes the intent to the
         /// ledger before sending; never retries. An unclear outcome becomes "unknown".
@@ -437,7 +462,7 @@ namespace Scenario.Editor
         public async Task<Result<JobRow>> Generate(GenerateRequest request)
         {
             if (!Ready) return Result<JobRow>.Fail(ErrorKind.Auth, IsSignedIn ? "Pick a Scenario project first." : "Sign in to Scenario first.", e => e.NotSent = true);
-            var fingerprint = Fingerprint(request.ModelId, request.Payload);
+            var fingerprint = Fingerprint(request);
             var now = Json.Now();
             if (Quotes.Usable(fingerprint, now) == null)
                 return Result<JobRow>.Fail(ErrorKind.Local, "Check the price first: the request changed since the last price check.", e => e.NotSent = true);
@@ -450,9 +475,12 @@ namespace Scenario.Editor
             row.Place = request.Place;
             row.PlaceTarget = request.Target != null ? GlobalObjectId.GetGlobalObjectIdSlow(request.Target).ToString() : "";
             row.Folder = request.Folder ?? "";
+            row.WorkflowId = request.WorkflowId ?? "";
             Ledger.Save();
             Emit();
-            var submitted = await Client.Submit(request.ModelId, request.Payload);
+            var submitted = string.IsNullOrEmpty(request.WorkflowId)
+                ? await Client.Submit(request.ModelId, request.Payload)
+                : await Client.SubmitWorkflow(request.WorkflowId, request.Payload);
             if (submitted.Ok)
             {
                 Ledger.MarkSubmitted(row.LocalId, submitted.Value.JobId, submitted.Value.Status, Json.Now());
@@ -586,6 +614,7 @@ namespace Scenario.Editor
                     JobId = row.JobId,
                     Parameters = row.Parameters,
                     Folder = row.Folder,
+                    Cu = row.ChargedCu ?? row.QuotedCu,
                 };
                 var imported = await Importer.Import(Client, row.AssetIds, context);
                 if (!imported.Ok)
@@ -599,7 +628,7 @@ namespace Scenario.Editor
                 {
                     var target = ResolveTarget(row.PlaceTarget);
                     var placed = Placer.Place(row.OutputType, imported.Value, row.Prompt, target, create: true);
-                    row.Placed = placed.Objects.Select(o => o.name).ToList();
+                    row.Placed = placed.Objects.Select(Placer.PathOf).ToList();
                     if (placed.Message.Length > 0) Notify(placed.Message, "warning");
                     Ledger.Save();
                 }
@@ -644,6 +673,61 @@ namespace Scenario.Editor
 
         public Task<Result<string>> UploadPath(string path) => Uploader.UploadFile(Client, path);
 
+        // --- Suggestions and Prompt Spark -------------------------------------
+
+        /// <summary>Free: Scenario's ranked models for a capability and prompt.</summary>
+        public Task<Result<JObject>> Recommend(string capability, string prompt, int limit = 3) => Client.Recommend(capability, prompt, limit);
+
+        readonly Dictionary<string, double> _sparkPrices = new Dictionary<string, double>();
+
+        /// <summary>Free: what one Prompt Spark run costs for this model (cached for the session).</summary>
+        public async Task<Result<double>> PromptSparkPrice(string modelId)
+        {
+            if (_sparkPrices.TryGetValue(modelId, out var known)) return Result<double>.Success(known);
+            var dry = await Client.PromptSpark(modelId, "", null, 1, dryRun: true);
+            if (!dry.Ok) return dry.Cast<double>();
+            if (ReturnedJob(dry.Value)) return Result<double>.Fail(ErrorKind.EstimateJob, "Prompt Spark returned a job on a price check.");
+            var cu = Json.Num(dry.Value, "creativeUnitsCost", -1);
+            if (cu < 0) return Result<double>.Fail(ErrorKind.Protocol, "Scenario returned no price for Prompt Spark.");
+            _sparkPrices[modelId] = cu;
+            return Result<double>.Success(cu);
+        }
+
+        static bool ReturnedJob(JObject value) => McpClient.CreatedJobId(value).Length > 0;
+
+        /// <summary>
+        /// Paid (a few CU): a better prompt for this model. Same rules as a generation:
+        /// the price is known first, the intent is saved, the call is never retried.
+        /// </summary>
+        public async Task<Result<string>> ImprovePrompt(string modelId, string modelName, string prompt, string origin = "window")
+        {
+            var reason = !Ready ? "Sign in and pick a project first." : Client.SpendingDisabled ? "Spending is turned off in Scenario settings." : "";
+            if (reason.Length > 0) return Result<string>.Fail(ErrorKind.Local, reason, e => e.NotSent = true);
+            var price = await PromptSparkPrice(modelId);
+            if (!price.Ok) return price.Cast<string>();
+            var parameters = new JObject { ["prompt"] = prompt ?? "" };
+            var fingerprint = QuoteBook.Fingerprint("prompt_spark:" + modelId, parameters, ScopeKey);
+            if (Ledger.Blocks(fingerprint))
+                return Result<string>.Fail(ErrorKind.Local, "The same Prompt Spark request is still unresolved. Check it in Jobs.", e => e.NotSent = true);
+            var row = Ledger.AddIntent("prompt", "", "Prompt Spark · " + modelName, parameters, fingerprint, price.Value, Json.Now(), prompt, origin);
+            Emit();
+            var result = await Client.PromptSpark(modelId, prompt, null, 1);
+            if (!result.Ok)
+            {
+                if (result.Error.Ambiguous) Ledger.MarkUnknown(row.LocalId, result.Error.Message, Json.Now());
+                else Ledger.MarkRejected(row.LocalId, result.Error.Message, Json.Now());
+                Emit();
+                return result.Cast<string>();
+            }
+            var charged = Json.Num(result.Value, "creativeUnitsCost", price.Value);
+            Ledger.MarkCharged(row.LocalId, charged, Json.Now());
+            Emit();
+            var improved = Json.Str(result.Value, "recommended_prompt");
+            if (improved.Length == 0 && result.Value["prompts"] is JArray prompts && prompts.Count > 0)
+                improved = prompts[0] is JObject first ? Json.Str(first, "prompt") : prompts[0].ToString();
+            return improved.Length > 0 ? Result<string>.Success(improved) : Result<string>.Fail(ErrorKind.Protocol, "Prompt Spark returned no prompt.");
+        }
+
         // --- Spend ----------------------------------------------------------
 
         /// <summary>Creative Units charged (or quoted, while running) today, from this project's ledger.</summary>
@@ -651,7 +735,7 @@ namespace Scenario.Editor
         {
             var start = new DateTimeOffset(DateTime.Today).ToUnixTimeSeconds();
             return Ledger.Jobs
-                .Where(r => r.CreatedAt >= start && r.State != JobState.Rejected && r.JobId.Length > 0 && r.State != JobState.Canceled)
+                .Where(r => r.CreatedAt >= start && r.State != JobState.Rejected && r.State != JobState.Canceled && (r.JobId.Length > 0 || r.ChargedCu.HasValue))
                 .Sum(r => r.ChargedCu ?? r.QuotedCu);
         }
 
