@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   release-please:
-    if: github.repository == 'edemaistre/scenario-unity'
+    if: github.repository == 'edemaistre/unity-plugin'
     runs-on: ubuntu-latest
     permissions:
       contents: write
