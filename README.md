@@ -11,7 +11,7 @@ Generate images, video, 3D models, character animations, PBR materials, skyboxes
 In Unity, open **Window > Package Management > Package Manager**, press **+**, choose **Install package from git URL** and paste:
 
 ```
-https://github.com/scenario-labs/unity-plugin.git?path=/Packages/com.scenario.unity
+https://github.com/edemaistre/scenario-unity.git?path=/Packages/com.scenario.unity
 ```
 
 Add `#unity-plugin-v0.1.0` at the end to pin a release. <!-- x-release-please-version --> The package pulls in glTFast (Unity's GLB importer) and Newtonsoft JSON.
