@@ -47,11 +47,14 @@ namespace ScenarioDev
                 var sources = new Dictionary<string, string>();
                 foreach (var kind in new[] { "image", "3d", "video", "audio" })
                 {
-                    var found = await S.Client.Search(new JObject
-                    {
-                        ["target"] = "assets", ["query"] = "", ["filter"] = $"kind IN [\"{kind}\"]",
-                        ["sort_by"] = new JArray("createdAt:desc"), ["limit"] = 1,
-                    });
+                    // Scenario's search index has no audio: list audio assets by type.
+                    var found = kind == "audio"
+                        ? await S.Client.ListAssets(new JObject { ["types"] = new JArray("txt2audio", "audio2audio", "video2audio", "uploaded-audio") }, 1, "", includeUrls: false)
+                        : await S.Client.Search(new JObject
+                        {
+                            ["target"] = "assets", ["query"] = "", ["filter"] = $"kind IN [\"{kind}\"]",
+                            ["sort_by"] = new JArray("createdAt:desc"), ["limit"] = 1,
+                        });
                     var id = found.Ok ? (string)(found.Value["assets"] as JArray)?.FirstOrDefault()?["id"] : null;
                     if (id != null) sources[kind] = id;
                     Log($"source {kind}: {id ?? "none in the project"}");
