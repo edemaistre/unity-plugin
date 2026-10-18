@@ -67,6 +67,9 @@ namespace ScenarioDev
             ("motion-cartwheel", "model_cartwheel-text-to-motion", new[] { "asset_aBX2SDGcSBCTb8oioRDRu2Ws" }, new Expect { Animated = true }),
             ("motion-uthana", "model_uthana-text-to-motion-3.0", new[] { "asset_7PdPMTgz9CRtenoP5qdMDjFc" }, new Expect { Animated = true }),
             ("uthana-motion-nochar", "model_uthana-text-to-motion-3.0", new[] { "asset_NXHV6vi97CdBV8H9HsEQNDDW" }, new Expect { Animated = true }),
+            // 2026-10-19, for the README: "runs forward fast, takes a big jump forward, lands and keeps running, then jumps high in the air".
+            ("run-jump-cartwheel", "model_cartwheel-text-to-motion", new[] { "asset_VD96zqP78q2rpaj53iX9KYNU" }, new Expect { Animated = true }),
+            ("run-jump-uthana", "model_uthana-text-to-motion-3.0", new[] { "asset_vCotdBCwSqJ69Ud7JCka33fQ" }, new Expect { Animated = true }),
         };
 
         const string Ledger = "tests/live/LEDGER.md";
@@ -435,12 +438,25 @@ namespace ScenarioDev
                     clip.SampleAnimation(animated, t);
                     foreach (var bone in bones) bounds.Encapsulate(new Bounds(bone.position, Vector3.one * 0.4f * Mathf.Max(0.01f, go.transform.lossyScale.y)));
                 }
-                for (var i = 0; i < times.Length; i++)
+                // The batch loop never runs Unity's skinning pass: each pose is baked (see Media).
+                var baked = clip != null ? Media.Skins(go) : null;
+                try
                 {
-                    if (clip != null) clip.SampleAnimation(animated, times[i]);
-                    var frame = Render(bounds, size);
-                    sheet.SetPixels(i * size, 0, size, size, frame.GetPixels());
-                    Object.DestroyImmediate(frame);
+                    for (var i = 0; i < times.Length; i++)
+                    {
+                        if (clip != null)
+                        {
+                            clip.SampleAnimation(animated, times[i]);
+                            Media.Bake(baked);
+                        }
+                        var frame = Render(bounds, size);
+                        sheet.SetPixels(i * size, 0, size, size, frame.GetPixels());
+                        Object.DestroyImmediate(frame);
+                    }
+                }
+                finally
+                {
+                    if (baked != null) Media.Unbake(baked);
                 }
                 sheet.Apply();
                 File.WriteAllBytes(path, sheet.EncodeToPNG());

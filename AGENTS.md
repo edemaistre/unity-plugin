@@ -103,6 +103,11 @@ python3 tools/e2e_agent.py Library/ScenarioDevLogs/e2e Library/ScenarioDevLogs/e
 # After a change to how models import, reimport the Scenario models of this project
 Unity -batchmode -projectPath . -executeMethod ScenarioDev.Accept3D.ReimportModels
 
+# README media: turntables and animation loops of the Scenario results in Assets/Scenario, rendered by Unity
+# (frames in Library/ScenarioDevLogs/media), then the GIFs in docs/images (needs ffmpeg and ImageMagick)
+Unity -batchmode -projectPath . -executeMethod ScenarioDev.Media.Run
+python3 tools/build_media.py
+
 # Icons from SVG
 uv run -q --with resvg-py tools/build_icons.py
 ```
