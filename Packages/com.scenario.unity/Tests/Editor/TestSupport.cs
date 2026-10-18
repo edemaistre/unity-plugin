@@ -59,10 +59,13 @@ namespace Scenario.Editor.Tests
             return Task.FromResult(built);
         }
 
+        /// <summary>The bytes a download returns, by URL (default: the text "fake").</summary>
+        public Func<string, byte[]> DownloadContent;
+
         public Task<HttpReply> DownloadAsync(string url, string destPath, double timeoutSeconds, IProgress<float> progress = null, CancellationToken cancel = default)
         {
             Requests.Add(new HttpRequestSpec { Method = "GET", Url = url });
-            File.WriteAllBytes(destPath, Encoding.ASCII.GetBytes("fake"));
+            File.WriteAllBytes(destPath, DownloadContent?.Invoke(url) ?? Encoding.ASCII.GetBytes("fake"));
             return Task.FromResult(new HttpReply { Status = 200 });
         }
 
