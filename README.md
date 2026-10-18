@@ -1,68 +1,209 @@
-# Scenario for Unity
+<p align="center">
+  <a href="https://www.scenario.com/"><img src="docs/images/scenario-logo.png" height="84" alt="Scenario"></a>
+</p>
+<h1 align="center">Scenario for Unity</h1>
+<p align="center">
+  <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-black"> <!-- x-release-please-version -->
+  <img alt="Unity 6.0 and later" src="https://img.shields.io/badge/Unity-6.0%2B-black?logo=unity">
+  <img alt="Render pipelines" src="https://img.shields.io/badge/pipelines-Built--in%20%C2%B7%20URP%20%C2%B7%20HDRP-555">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="https://docs.scenario.com"><img alt="API documentation" src="https://img.shields.io/badge/documentation-api-black.svg"></a>
+  <a href="https://help.scenario.com"><img alt="App documentation" src="https://img.shields.io/badge/documentation-app-black.svg"></a>
+  <a href="https://mcp.scenario.com/docs"><img alt="MCP documentation" src="https://img.shields.io/badge/documentation-mcp-black.svg"></a>
+</p>
 
-Generate images, video, 3D models, character animations, PBR materials, skyboxes and audio with every [Scenario](https://scenario.com) model, from a window inside the Unity Editor. The 3D models can then be edited, retextured, remeshed, rigged, animated or split without leaving Unity. You see the price in Creative Units (CU) before anything is spent, and the result lands in your project as a wired Unity asset: a sprite on the selected renderer, a prefab at the Scene view pivot, a material on the selected mesh, the scene's skybox. AI agents such as Claude Code, Codex and Cursor can drive the same actions through a local MCP server in the editor.
+Every [Scenario](https://scenario.com) model inside the Unity Editor: images, video, 3D models, character animation, audio, PBR materials and skyboxes. A 3D model can then be retextured, edited with a prompt, remeshed, rigged, animated or split into parts without leaving Unity. Each request shows its price before anything is spent, and each result lands in the project as a wired Unity asset: a prefab on the ground at the Scene view pivot, a sprite on the selected renderer, a material on the selected mesh, an animated character with its Animator Controller, the scene's skybox. AI agents (Claude Code, Codex, Cursor, VS Code) drive the same actions through a local MCP server in the editor.
 
-![The Scenario window: navigation on the left, the model and prompt with the price on the Generate button, the results below](docs/images/window-0.1.0.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/window-dark.png">
+  <img alt="The Scenario window: navigation on the left, the model, quick picks and prompt, the price on the Generate button, the results below" src="docs/images/window-light.png">
+</picture>
 
-**Version 0.1.0** <!-- x-release-please-version -->. Unity 6.0 or later. Tested on Unity 6.3 (6000.3.21f1) with URP on macOS. Editor only: nothing from the package ships in a player build. MIT license.
+## Made in Unity with the plugin
+
+Every image below is a real Scenario result, imported by the plugin and rendered by Unity.
+
+**Generate a 3D model** from a prompt or an image: Meshy 7.1, Rodin Gen-2.5, Hunyuan 3D 3.1 Pro, Tripo P2, Voxel Crafter and the rest of the catalog.
+
+![Four generated 3D models turning in Unity: a fox and a knight from Meshy 7.1, a character's clothes changed to blue cloth and silver armor by Tencent Texture Edit, a voxel tree from Voxel Crafter](docs/images/generate-3d.gif)
+
+**Then work on it** with every 3D operation on Scenario. One chest, eight operations:
+
+![A wooden treasure chest and seven operations on it, each turning in Unity: retexture, texture edit, prompt edit, LEGO and voxel stylization, parts, remesh](docs/images/3d-operations.gif)
+
+**Rig and animate it.** Rigging, Meshy's motion library (656 motions picked by name), motion from a prompt or from a video. The result arrives with an Animator Controller and plays in Play mode.
+
+![Four characters animated in Unity: Meshy and Tripo rigs with their walks, an attack from Meshy's motion library, a motion from a prompt by Meshy](docs/images/animate.gif)
+
+<table>
+  <tr>
+    <td width="45%"><img alt="A character runs, jumps forward, lands and jumps high, made by Uthana Text to Motion" src="docs/images/run-jump.gif"></td>
+    <td>
+      <b>Text to motion.</b> The prompt <i>"runs forward fast, takes a big jump forward, lands and keeps running, then jumps high in the air"</i>, sent to Uthana Text to Motion 3.0 with the character on the left, returns an 8-second clip. The plugin imports the GLB, builds the Animator Controller and places the character. Cartwheel takes the same request. In this clip the hips are held over one spot so the jumps stay in frame.
+    </td>
+  </tr>
+</table>
+
+## Contents
+
+[Install](#install) · [Sign in](#sign-in) · [Create](#create) · [3D: every operation](#3d-every-operation) · [Motion](#motion) · [Models](#find-a-model) · [Next steps](#next-steps) · [Library, Jobs, Workflows](#library-jobs-and-workflows) · [Agents (MCP)](#agents-mcp) · [Editor scripts and CI](#editor-scripts-and-ci) · [Spending rules](#spending-rules) · [Where files go](#where-files-go) · [Documentation](#documentation) · [Development](#development)
 
 ## Install
 
-In Unity, open **Window > Package Management > Package Manager**, press **+**, choose **Install package from git URL** and paste:
+Unity 6.0 or later. Tested on Unity 6.3 (6000.3.21f1) on macOS, with URP and with the Built-in pipeline. Editor only: nothing from the package ships in a player build.
 
-```
-https://github.com/edemaistre/unity-plugin.git?path=/Packages/com.scenario.unity
-```
-
-Add `#unity-plugin-v0.1.0` at the end to pin a release. <!-- x-release-please-version --> The package pulls in glTFast (Unity's GLB importer) and Newtonsoft JSON.
-
-Then open **Window > Scenario** (Alt+Shift+S).
+1. In Unity, open **Window > Package Management > Package Manager**, press **+** and choose **Install package from git URL**.
+2. Paste:
+   ```
+   https://github.com/edemaistre/unity-plugin.git?path=/Packages/com.scenario.unity
+   ```
+   Add `#unity-plugin-v0.1.0` at the end to pin a release. <!-- x-release-please-version --> The package pulls in glTFast (Unity's GLB importer) and Newtonsoft JSON.
+3. Open **Window > Scenario** (Alt+Shift+S).
 
 ## Sign in
 
-- **Sign in with Scenario** opens your browser, you approve, and the window lists your teams and projects. Generations are billed to the project you pick.
+- **Sign in with Scenario** opens your browser. Approve, go back to Unity, pick a team and a project: generations are billed to that project. Switch it later from the header.
 - **Use an API key instead**: paste the key and secret from the Scenario web app (or `key:secret` in one go). The key is tied to one project.
 - **CI and batch mode**: set `SCENARIO_API_KEY` and `SCENARIO_API_SECRET`.
 
-Secrets never go into your Unity project: they live in the macOS Keychain or the Windows Credential Manager (service "Scenario Unity Plugin"), or, elsewhere, in a file readable by your user only.
+Secrets never go into the Unity project, so nothing reaches git: they live in the macOS Keychain or the Windows Credential Manager (entry "Scenario Unity Plugin"), or elsewhere in a file readable by your user only.
 
-## What you can make
+## Create
 
-| Type | Quick picks (the whole catalog is one click away) | Lands as |
+Pick a type, a model and a prompt. The settings form is built from the model's live schema, essentials first, and the **Generate** button carries the price of exactly this request.
+
+<table>
+  <tr>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/create-3d-dark.png"><img alt="Create, 3D: Meshy 7.1 Text to 3D with its quick picks, a prompt and Generate at 120 CU" src="docs/images/screens/create-3d-light.png"></picture></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/create-material-dark.png"><img alt="Create, Material: PATINA Material with its settings" src="docs/images/screens/create-material-light.png"></picture></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/create-skybox-dark.png"><img alt="Create, Skybox: Scenario Skybox GPT" src="docs/images/screens/create-skybox-light.png"></picture></td>
+  </tr>
+  <tr>
+    <td align="center">3D</td><td align="center">Material</td><td align="center">Skybox</td>
+  </tr>
+</table>
+
+| Type | Quick picks (the whole catalog is one click away) | Lands in Unity as |
 |---|---|---|
 | Image | GPT Image 2.5 Sunburst, GPT Image 2.5 Flare, Nano Banana 2.1, Seedream 5.0 Pro, Retro Diffusion Plus | a texture or sprite, set on the selected SpriteRenderer, UI Image, RawImage or renderer, or a new quad or sprite |
 | Video | Minimax H3, Gemini Omni 1.1 Flash, Wan 3.0, Seedance 2.5 | a VideoClip on the selected VideoPlayer, or a new screen quad |
 | 3D | Meshy 7.1, Rodin Gen-2.5, Hunyuan 3D 3.1 Pro, Tripo P2, Meshy T2.5 Smart Topology, Voxel Crafter | a GLB imported as a prefab, placed on the ground at the Scene view pivot, optional MeshCollider |
-| Motion | Cartwheel and Uthana text to motion, Meshy Text to Motion, Meshy Animation (656 library motions by name), Cartwheel and Uthana video to motion | an animated GLB with an Animator Controller, one state per clip, playing in Play mode |
+| Motion | Cartwheel and Uthana text to motion, Meshy Text to Motion, Meshy Animation, Cartwheel and Uthana video to motion | an animated GLB with an Animator Controller, one state per clip |
 | Audio | Mirelo SFX 2.0, ElevenLabs Sound Effects 2, Sonilo V1.1, ElevenLabs Music v2.5, Gemini 3.8 Flash TTS | an AudioClip on the selected AudioSource, or a new one |
-| Material | PATINA Material, PATINA Image to Maps, PATINA Material Extract | a material for your render pipeline (Built-in, URP, HDRP) with normal, height and packed metallic and smoothness maps, set on the selected renderers |
+| Material | PATINA Material, PATINA Image to Maps, PATINA Material Extract | a material for the active pipeline (Built-in, URP, HDRP) with normal, height and packed metallic and smoothness maps, set on the selected renderers |
 | Skybox | Scenario Skybox GPT, Scenario Skybox Flux, HY World Image to Skybox | a Skybox/Panoramic material set as the scene's skybox |
 | All models | every model in the catalog, plus your team's own | by the kind of file it returns |
 
-**Suggest** ranks the best models for your prompt. **Change** opens the model browser: search, favorites, team models. The settings form is built from each model's live schema, essentials first.
+Inputs (reference images, a start frame, a 3D model, a video, a voice) are filled by dragging from the Project window or the Hierarchy, or from the slot's menu: the selection, a capture of the Scene view or the main camera, a file, a Scenario asset. Unity files are uploaded once, free. Each result shows as a card with **Place**, **Next** (the typed steps for it) and **More**.
 
-**Next steps** turn any asset into the next one: an image into a 3D model, a Gaussian splat, a video, a material, a skybox, or a cleaner image (remove background, upscale, vectorize, pixelate, edit by prompt); a video into an upscaled or restyled one, one with sound, or a character animation; a voice into a changed or isolated one. They are on result cards, on a right-click in the Project window (**Scenario > Next Step**) and in the Inspector of any generated asset.
+## 3D: every operation
 
-For 3D models the steps cover every 3D operation on Scenario, each with a default model and its alternatives:
+A generated or imported model opens the 3D steps, grouped in the **Next** menu. Each step opens Create with its default model and the model already attached, so the price shows before anything is sent; the other models of the step are one click away.
 
-| Group | Steps |
-|---|---|
-| Texture | Retexture (Meshy 7, Tripo 3.0, Tencent, Trellis 2, YVO3D), UV unwrap (Tripo, Meshy, Tencent) |
-| Shape | Edit with a prompt (Claude Opus 5.5 3D, Astra 3D), retopology (Tripo v3, Hunyuan Polygen), remesh to a polycount (Meshy), refine from an image (UltraShape) |
-| Rig and animate | Rig a character (Uthana, Meshy, Cartwheel, Tripo) or a creature (Tripo 2.5), animate from Meshy's motion library, from a prompt (Cartwheel, Uthana) or from a video (Cartwheel, Uthana) |
-| Parts and style | Split into parts (Tripo, Hunyuan 3D Part, Hitem3D, Rodin Bang), stylize as LEGO, voxels or Voronoi (Tripo), multicolor (Hitem3D) |
+<table>
+  <tr>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/step-retexture-dark.png"><img alt="The Retexture step with Meshy 7 Retexture and its alternatives" src="docs/images/screens/step-retexture-light.png"></picture></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/step-remesh-dark.png"><img alt="The Remesh step with Meshy Remesh and a polycount" src="docs/images/screens/step-remesh-light.png"></picture></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/step-rig-dark.png"><img alt="The Rig step with Uthana Character Rigging, the character already attached, Generate at 40 CU" src="docs/images/screens/step-rig-light.png"></picture></td>
+  </tr>
+  <tr>
+    <td align="center">Retexture</td><td align="center">Remesh to a polycount</td><td align="center">Rig a character</td>
+  </tr>
+</table>
 
-Animated results come with their Animator Controller; a rig delivered with walk and run files becomes one character with every clip. Results stored as FBX, Blender or VOX files arrive as GLB, and inputs that only read FBX get Scenario's FBX copy of your model, free.
+| Group | Step | Models (default first) |
+|---|---|---|
+| Texture | Retexture | Meshy 7 Retexture, Tripo 3.0 Texturing, Tencent Texture Edit, Trellis 2, YVO3D |
+| | UV unwrap | Tripo Smart UV, Meshy UV Unwrap, Tencent |
+| Shape | Edit with a prompt | Claude Opus 5.5 3D, Astra 3D |
+| | Retopology | Tripo Retopology v3, Hunyuan Polygen |
+| | Remesh to a polycount | Meshy Remesh, Hunyuan Polygen |
+| | Refine the shape from an image | UltraShape |
+| Rig and animate | Rig a character | Uthana, Meshy, Cartwheel, Tripo |
+| | Rig a creature | Tripo Rigging 2.5 |
+| | Animate from the motion library | Meshy Animation, Tripo |
+| | Animate from a prompt | Cartwheel, Uthana, Astra |
+| | Animate from a video | Cartwheel, Uthana |
+| Parts and style | Split into parts | Tripo Segmentation v2, Hunyuan 3D Part, Hitem3D Split, Rodin Bang |
+| | Stylize as LEGO, voxels or Voronoi | Tripo Stylization, Hitem3D Multicolor |
 
-**Workflows** lists your team's Scenario workflows and the featured public ones; their inputs become a form with a price.
+What the plugin handles so the result just works in Unity:
 
-**Library** browses your Scenario project's assets and imports any of them. Its second tab lists every asset in this Unity project that came from Scenario.
+- **One model per result.** A rig delivered with walk and run files becomes one character with every clip in its controller; the bare-skeleton copies are skipped.
+- **Formats.** Results Scenario stores as FBX, Blender or VOX files arrive as GLB, skins and animations included. Inputs that only read FBX (Tencent Texture Edit) get Scenario's FBX copy of your model, free.
+- **Scale and materials.** A rig written in centimeters is placed at 1% scale. Meshes without a material keep their vertex colors (Hitem3D Multicolor, Hunyuan 3D Part).
+- **Gaussian splats** (TripoSplat, HY World, Marble) are saved as `.ply` or `.spz` files, ready for a splat renderer package.
 
-## Agents
+## Motion
 
-Turn on **Agent** in the window to let a local AI agent use Scenario and your scene. The editor then serves an MCP server on `http://127.0.0.1:8791/mcp`, with a bearer token kept on your machine. The Agent view gives the setup line for Claude Code, Codex, Cursor and VS Code (and runs it for Claude Code).
+Motion gathers the animation models: a motion from a prompt (Cartwheel, Uthana, Meshy), from a video (Cartwheel, Uthana), or from Meshy's library applied to your character. The library's 656 motions are picked by name, with a search and category chips, instead of a numeric id.
 
-The agent gets Scenario tools (find a model, price, generate, workflows, jobs, import, upload) and scene tools (inspect the hierarchy, create and change objects and components, assign materials, set the skybox, save, read the console, capture the Scene view as an image it can look at). Every scene edit is one Undo step. Paid calls above a per-call limit (20 CU by default) or beyond a session budget (300 CU) wait for your approval in the window.
+<table>
+  <tr>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/create-motion-dark.png"><img alt="Create, Motion: Cartwheel Text to Motion with a character input" src="docs/images/screens/create-motion-light.png"></picture></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/motion-picker-dark.png"><img alt="Meshy's motion library searched for sword: Sword Shout, Sword Judgment, Sword Parry..." src="docs/images/screens/motion-picker-light.png"></picture></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/step-image-to-3d-dark.png"><img alt="The Make a 3D model step from an image" src="docs/images/screens/step-image-to-3d-light.png"></picture></td>
+  </tr>
+  <tr>
+    <td align="center">Text to motion</td><td align="center">Motion library by name</td><td align="center">Image to 3D step</td>
+  </tr>
+</table>
+
+## Find a model
+
+**Suggest** sends your prompt to Scenario's recommender and ranks the best models for the type. **Change** opens the model browser: search, favorites, your team's trained models, legacy models on demand. **Ctrl+K** (Cmd+K) opens a command palette over models, views and actions.
+
+<table>
+  <tr>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/model-browser-dark.png"><img alt="The model browser with search and filters" src="docs/images/screens/model-browser-light.png"></picture></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/command-palette-dark.png"><img alt="The command palette searching models and actions" src="docs/images/screens/command-palette-light.png"></picture></td>
+  </tr>
+</table>
+
+## Next steps
+
+Any asset leads to the next one. An image becomes a 3D model, a Gaussian splat, a video, a PBR material, a skybox or a cleaner image (remove background, upscale, vectorize, pixelate, edit by prompt). A video becomes an upscaled or restyled one, one with sound, or a character animation. A voice becomes a changed or isolated one. Steps are on result cards, on a right-click in the Project window (**Scenario > Next Step**) and in the Inspector header of any generated asset, which also shows its model, prompt, job and cost.
+
+## Library, Jobs and Workflows
+
+<table>
+  <tr>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/library-dark.png"><img alt="Library: the Scenario project's assets with filters" src="docs/images/screens/library-light.png"></picture></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/jobs-dark.png"><img alt="Jobs: every generation with its state and cost" src="docs/images/screens/jobs-light.png"></picture></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/workflows-dark.png"><img alt="Workflows: featured Scenario workflows" src="docs/images/screens/workflows-light.png"></picture></td>
+  </tr>
+  <tr>
+    <td align="center">Library</td><td align="center">Jobs</td><td align="center">Workflows</td>
+  </tr>
+</table>
+
+- **Library** browses your Scenario project's assets and imports any of them. Its second tab lists every asset in this Unity project that came from Scenario, so a lead can audit what was generated.
+- **Jobs** keeps every generation on your machine, across restarts and recompiles. A job whose connection dropped while sending shows as Unknown and blocks the same request until it is matched on Scenario, so a network error cannot charge you twice.
+- **Workflows** lists your team's Scenario workflows and the featured public ones; their inputs become a form with a price.
+
+## Agents (MCP)
+
+Turn on **Agent** in the window and the editor serves an MCP server named `scenario-unity` on `http://127.0.0.1:8791/mcp`, with a bearer token kept on your machine. The Agent view gives the setup for Claude Code (and runs it), Codex, Cursor and VS Code.
+
+<table>
+  <tr>
+    <td width="40%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/agent-dark.png"><img alt="The Agent view: server on, client setup buttons, permissions and activity" src="docs/images/screens/agent-light.png"></picture></td>
+    <td>
+
+The agent gets two sets of tools:
+
+- **Scenario**: find a model, find a motion in Meshy's library, price, generate, run workflows, follow jobs, import, upload.
+- **Scene**: inspect the hierarchy, create and change objects and components, assign materials, set the skybox, save, read the console, and capture the Scene view or the main camera as an image it can look at.
+
+Every scene edit is one Undo step. A paid call above the per-call limit (20 CU by default) or beyond the session budget (300 CU) waits for **Approve** in the window. The activity log lists every call.
+
+Example, tested with Claude Code: *"Check that you are signed in, find a sword attack in the motion library, list three image-to-3D models, price a barrel prop, add a cube to the scene and show me the Scene view."* It ran the six steps in 17 seconds without spending. The barrel's price, 120 CU, is above the auto-approve limit, so generating it would wait for approval in Unity.
+
+The hosted [Scenario MCP](https://mcp.scenario.com/docs) covers the platform without Unity (collections, training, usage). Connect both when needed.
+
+</td>
+  </tr>
+</table>
 
 ## Editor scripts and CI
 
@@ -70,31 +211,41 @@ The agent gets Scenario tools (find a model, price, generate, workflows, jobs, i
 using Newtonsoft.Json.Linq;
 using Scenario;
 
-var price = await ScenarioApi.Estimate("model_openai-gpt-image-2-5-flare", new JObject { ["prompt"] = "A rune stone icon" });
-var result = await ScenarioApi.Generate("model_openai-gpt-image-2-5-flare", new JObject { ["prompt"] = "A rune stone icon" }, maxCu: 20);
+var parameters = new JObject { ["prompt"] = "A rune stone icon, flat colors" };
+var cu = await ScenarioApi.Estimate("model_openai-gpt-image-2-5-flare", parameters);      // free
+var result = await ScenarioApi.Generate("model_openai-gpt-image-2-5-flare", parameters, maxCu: 20);
 Debug.Log(string.Join(", ", result.Files)); // Unity asset paths
 ```
 
-`Generate` prices first and refuses, without sending, anything above `maxCu`.
+`Generate` prices first and refuses, without sending, anything above `maxCu`. In batch mode, set `SCENARIO_UNITY_SERVICE=1` so jobs are polled and imported.
 
 ## Spending rules
 
 - **Price first.** The button reads `Generate · 11 CU`, from a free price check of the exact request. Change anything and the price is checked again.
 - **One click, one paid request.** Each price is used once, and a paid request is never retried.
-- **Uncertain means Unknown.** If the connection drops while a paid request is being sent, the job is marked Unknown and the same request is blocked until it is matched on Scenario, so a network glitch cannot charge you twice.
+- **Uncertain means Unknown.** If the connection drops while a paid request is being sent, the job is marked Unknown and the same request waits until it is matched on Scenario.
 - **Confirmation** above a threshold (100 CU by default, in Settings).
-- **Spending switch**: in Settings, or `SCENARIO_NO_SPEND=1` for the whole editor. Price checks, browsing and imports still work.
+- **Spending switch** in Settings, or `SCENARIO_NO_SPEND=1` for the whole editor. Price checks, browsing and imports still work.
 - Moderated requests show as Blocked and are never resent.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/settings-dark.png">
+  <img alt="Settings with the diagnostics report" src="docs/images/screens/settings-light.png" width="300" align="right">
+</picture>
 
 ## Where files go
 
-Results go to `Assets/Scenario/<Type>/<date>/`, named after the prompt, for example `Assets/Scenario/Image/2026-10-18/stylized-wooden-treasure-chest-a1b2c3.png`. Each asset records its model, prompt, job and cost in its `.meta` file, carries the `Scenario` label, and shows them in the Inspector. The job list lives in `Library/Scenario/jobs.json`, on your machine only.
+Results go to `Assets/Scenario/<Type>/<date>/`, named after the prompt, for example `Assets/Scenario/Models/2026-10-18/a-stylized-wooden-treasure-chest-83pjsb.glb`. Each asset records its model, prompt, job, settings and cost in its `.meta` file, carries the `Scenario` label and shows them in the Inspector. Every placement is one Undo step. The job list lives in `Library/Scenario/jobs.json`, on your machine only.
+
+Project settings (output folder, import, placement, spending threshold) are saved in `ProjectSettings/` and shared with your team. Your account, favorites, spending switch and agent settings stay on your machine. **Settings > Diagnostics** runs a free check of sign-in, project access, the catalog and one price check, and copies a report for support.
+
+<br clear="right">
 
 ## Documentation
 
 - [User guide](Packages/com.scenario.unity/Documentation~/USER_GUIDE.md): every view step by step, job states, troubleshooting.
 - [Agent skill](Packages/com.scenario.unity/Documentation~/agent-skill/SKILL.md): what an agent should know to use the bridge well.
-- [Changelog](Packages/com.scenario.unity/CHANGELOG.md), [roadmap](ROADMAP.md).
+- [Changelog](Packages/com.scenario.unity/CHANGELOG.md), [roadmap](ROADMAP.md), [support](SUPPORT.md), [security](SECURITY.md).
 
 ## Development
 
@@ -104,8 +255,14 @@ The repository root is a Unity 6.3 project that hosts the package (`Packages/com
 Unity -batchmode -projectPath . -runTests -testPlatform EditMode -testResults results.xml
 ```
 
-The window tests need a graphics device and are skipped under `-nographics`. Two live checks run from `Assets/ScenarioDev/Editor` with `-executeMethod` and the test key in `SCENARIO_API_KEY` and `SCENARIO_API_SECRET`: `ScenarioDev.ContractCheck.Run` (free, needs `SCENARIO_NO_SPEND=1`) prices every quick pick, step and a set of workflows; `ScenarioDev.Acceptance.Run` (paid, needs `SCENARIO_ACCEPT=1`) runs one generation per type and records it in `tests/live/LEDGER.md`. `ScenarioDev.Accept3D.Import` (free) imports one real result of each 3D operation and checks the model, its rig and its clips, with a render of each; `ScenarioDev.Accept3D.Paid` sends a few 3D operations through the window's and the agent's paths. `ScenarioDev.E2E.OAuth` checks the browser sign-in against Scenario (a person signs in), and `ScenarioDev.E2E.Agent` with `tools/e2e_agent.py` has Claude Code drive the editor through the agent bridge.
+The window tests need a graphics device and are skipped under `-nographics`. Live checks run from `Assets/ScenarioDev/Editor` with `-executeMethod` and the test key in `SCENARIO_API_KEY` and `SCENARIO_API_SECRET`:
+
+- `ScenarioDev.ContractCheck.Run` (free, needs `SCENARIO_NO_SPEND=1`) prices every quick pick, every 3D step and a set of workflows.
+- `ScenarioDev.Acceptance.Run` (paid, needs `SCENARIO_ACCEPT=1`) runs one generation per type and records it in `tests/live/LEDGER.md`.
+- `ScenarioDev.Accept3D.Import` (free) imports one real result of each 3D operation and checks the model, its rig and its clips, with a render of each; `ScenarioDev.Accept3D.Paid` sends a few 3D operations through the window's and the agent's paths.
+- `ScenarioDev.E2E.OAuth` checks the browser sign-in (a person signs in); `ScenarioDev.E2E.Agent` with `tools/e2e_agent.py` has Claude Code drive the editor through the agent bridge.
+- `ScenarioDev.Media.Run` renders the turntables and animations above, and `tools/build_media.py` turns them into the GIFs.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). Scenario is a trademark of Scenario Inc.

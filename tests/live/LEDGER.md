@@ -69,3 +69,12 @@ Before the 3D steps were built, one run per 3D operation was sent once from a sc
 | C | creature | `model_meshy-7-1-txt23d` | `job_YsM8NfbfeZToTPx7XA1grQRy` | 120 | 120 | ok: 1 glb, 1 mtl, 1 obj, 4 png |
 
 Not sent: HY World image to splat (quoted 1600 CU) and YVO3D Retexture (price check refused without a reference image); both are priced by the contract check.
+
+## 2026-10-19: README motion (Scenario MCP, test project)
+
+Prompt "runs forward fast, takes a big jump forward, lands and keeps running, then jumps high in the air" on the remeshed character (`asset_Vv93WrrNrXKuQd4APofT6XxN`), both models side by side; imported with `ScenarioDev.Accept3D.Import` (cases `run-jump`), rendered with `ScenarioDev.Media.Run`. Uthana's take is the one in the README (it stays in frame); Cartwheel's high jump leaves the character small in a fixed frame.
+
+| Case | Model | Job | Charged CU | Result |
+|---|---|---|---|---|
+| run-jump-cartwheel | `model_cartwheel-text-to-motion` | `job_DuuaeWtAYSk4heNqsEHxZYsF` | 120 | ok: 1 glb, 5.0 s clip |
+| run-jump-uthana | `model_uthana-text-to-motion-3.0` | `job_f1JaKpHTwrfZZ5mazpjdLbLr` | 228 | ok: 1 glb, 8.0 s clip |
