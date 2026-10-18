@@ -333,7 +333,7 @@ namespace Scenario.Editor.UI
                 Ui.Menu(anchor, menu =>
                 {
                     menu.AddDisabledItem(new GUIContent("An API key works in its own project"));
-                    menu.AddItem(new GUIContent("Open project on Scenario"), false, () => Application.OpenURL("https://app.scenario.com"));
+                    menu.AddItem(new GUIContent("Open project on Scenario"), false, () => Application.OpenURL(s.HomeLink));
                 });
                 return;
             }
@@ -359,7 +359,7 @@ namespace Scenario.Editor.UI
             {
                 menu.AddDisabledItem(new GUIContent(s.AccountLabel.Replace("/", "∕")));
                 menu.AddSeparator("");
-                menu.AddItem(new GUIContent("Open Scenario"), false, () => Application.OpenURL("https://app.scenario.com"));
+                menu.AddItem(new GUIContent("Open Scenario"), false, () => Application.OpenURL(s.HomeLink));
                 menu.AddItem(new GUIContent("Settings"), false, () => Show("settings"));
                 menu.AddSeparator("");
                 if (s.FromEnvironment) menu.AddDisabledItem(new GUIContent("Signed in from environment variables"));

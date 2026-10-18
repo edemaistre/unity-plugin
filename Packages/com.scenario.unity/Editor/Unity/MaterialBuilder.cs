@@ -67,6 +67,8 @@ namespace Scenario.Editor
         /// </summary>
         public static Material Build(Dictionary<string, string> maps, string materialPath)
         {
+            // Never write over another material or its packed map.
+            materialPath = AssetDatabase.GenerateUniqueAssetPath(materialPath);
             var material = new Material(LitShader()) { name = Path.GetFileNameWithoutExtension(materialPath) };
             Texture Load(string role) => maps.TryGetValue(role, out var p) ? AssetDatabase.LoadAssetAtPath<Texture2D>(p) : null;
             var albedo = Load("albedo") ?? Load("base") ?? Load("main");
@@ -90,7 +92,7 @@ namespace Scenario.Editor
             {
                 if (metallicPath != null || roughnessPath != null || aoPath != null)
                 {
-                    var mask = PackMask($"{dir}/{stem}-mask.png", metallicPath, aoPath, roughnessPath, hdrp: true);
+                    var mask = PackMask(AssetDatabase.GenerateUniqueAssetPath($"{dir}/{stem}-mask.png"), metallicPath, aoPath, roughnessPath, hdrp: true);
                     if (mask != null)
                     {
                         material.SetTexture("_MaskMap", mask);
@@ -102,7 +104,7 @@ namespace Scenario.Editor
             {
                 if (metallicPath != null || roughnessPath != null)
                 {
-                    var packed = PackMask($"{dir}/{stem}-metallic-smoothness.png", metallicPath, null, roughnessPath, hdrp: false);
+                    var packed = PackMask(AssetDatabase.GenerateUniqueAssetPath($"{dir}/{stem}-metallic-smoothness.png"), metallicPath, null, roughnessPath, hdrp: false);
                     if (packed != null)
                     {
                         material.SetTexture("_MetallicGlossMap", packed);
@@ -133,7 +135,7 @@ namespace Scenario.Editor
                     material.SetTexture("_HeightMap", height);
                 }
             }
-            AssetDatabase.CreateAsset(material, AssetDatabase.GenerateUniqueAssetPath(materialPath));
+            AssetDatabase.CreateAsset(material, materialPath);
             return material;
         }
 

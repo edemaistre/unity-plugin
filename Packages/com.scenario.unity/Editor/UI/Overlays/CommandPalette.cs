@@ -141,7 +141,7 @@ namespace Scenario.Editor.UI
                         if (p.Id == S.Client.ProjectId) continue;
                         list.Add(new Command { Title = $"Switch to {p.Name}", Detail = t.Name, Icon = "layers", Group = "Workspace", Run = () => S.SelectWorkspace(t.Id, p.Id) });
                     }
-            list.Add(new Command { Title = "Open Scenario on the web", Icon = "external", Group = "Actions", Run = () => Application.OpenURL("https://app.scenario.com") });
+            list.Add(new Command { Title = "Open Scenario on the web", Icon = "external", Group = "Actions", Run = () => Application.OpenURL(S.HomeLink) });
             if (!S.FromEnvironment) list.Add(new Command { Title = "Sign out", Icon = "logout", Group = "Account", Run = S.SignOut });
 
             foreach (var row in S.Ledger.Jobs.Where(r => r.OutputType != "prompt" && r.State != JobState.Dismissed).Take(12))

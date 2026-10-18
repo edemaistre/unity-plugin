@@ -104,7 +104,7 @@ namespace Scenario.Editor.UI
                 var firstAsset = row.AssetIds.FirstOrDefault();
                 if (!string.IsNullOrEmpty(firstAsset))
                 {
-                    menu.AddItem(new GUIContent("Open on Scenario"), false, () => Application.OpenURL("https://app.scenario.com/assets/" + firstAsset));
+                    menu.AddItem(new GUIContent("Open on Scenario"), false, () => Application.OpenURL(ScenarioService.Instance.AssetLink(firstAsset, row)));
                     menu.AddItem(new GUIContent("Copy asset id"), false, () => EditorGUIUtility.systemCopyBuffer = firstAsset);
                 }
                 if (row.State == JobState.Success && !row.Imported)

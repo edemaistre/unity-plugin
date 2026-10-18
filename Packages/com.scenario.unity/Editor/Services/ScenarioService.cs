@@ -367,6 +367,12 @@ namespace Scenario.Editor
 
         public TeamInfo CurrentTeam => Teams.FirstOrDefault(t => t.Id == Client.TeamId);
 
+        /// <summary>Web page of an asset: in the job's workspace when known, else the current one.</summary>
+        public string AssetLink(string assetId, JobRow row = null) =>
+            row != null && row.TeamId.Length > 0 ? Links.Asset(assetId, row.TeamId, row.ProjectId) : Links.Asset(assetId, Client.TeamId, Client.ProjectId);
+
+        public string HomeLink => Links.Home(Client.TeamId, Client.ProjectId);
+
         public void SelectWorkspace(string teamId, string projectId, bool quiet = false)
         {
             var team = Teams.FirstOrDefault(t => t.Id == teamId);
@@ -498,6 +504,9 @@ namespace Scenario.Editor
             var row = Ledger.AddIntent(request.OutputType, request.ModelId, request.ModelName, request.Payload, fingerprint, quote.Cu, now, request.Prompt, request.Origin);
             row.Place = request.Place;
             row.PlaceTarget = request.Target != null ? GlobalObjectId.GetGlobalObjectIdSlow(request.Target).ToString() : "";
+            row.PlaceTargetPath = Placer.PathOf(request.Target);
+            row.TeamId = Client.TeamId;
+            row.ProjectId = Client.ProjectId;
             row.Folder = request.Folder ?? "";
             row.WorkflowId = request.WorkflowId ?? "";
             Ledger.Save();
@@ -650,7 +659,7 @@ namespace Scenario.Editor
                 Ledger.MarkImported(row.LocalId, imported.Value.Select(f => f.Path).ToList(), Json.Now());
                 if (row.Place)
                 {
-                    var target = ResolveTarget(row.PlaceTarget);
+                    var target = ResolveTarget(row);
                     var placed = Placer.Place(row.OutputType, imported.Value, row.Prompt, target, create: true);
                     row.Placed = placed.Objects.Select(Placer.PathOf).ToList();
                     if (placed.Message.Length > 0) Notify(placed.Message, "warning");
@@ -666,10 +675,13 @@ namespace Scenario.Editor
             }
         }
 
-        static GameObject ResolveTarget(string globalId)
+        /// <summary>The object a job places on: by GlobalObjectId, else by hierarchy path (objects in an unsaved scene have no usable GlobalObjectId).</summary>
+        internal static GameObject ResolveTarget(JobRow row)
         {
-            if (string.IsNullOrEmpty(globalId) || !GlobalObjectId.TryParse(globalId, out var id)) return null;
-            return GlobalObjectId.GlobalObjectIdentifierToObjectSlow(id) as GameObject;
+            if (!string.IsNullOrEmpty(row.PlaceTarget) && GlobalObjectId.TryParse(row.PlaceTarget, out var id)
+                && GlobalObjectId.GlobalObjectIdentifierToObjectSlow(id) is GameObject go)
+                return go;
+            return Placer.FindByPath(row.PlaceTargetPath);
         }
 
         /// <summary>After a domain reload: finished jobs that were not imported yet, from the last hour.</summary>

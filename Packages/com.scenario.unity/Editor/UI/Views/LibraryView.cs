@@ -19,9 +19,10 @@ namespace Scenario.Editor.UI
         // Asset kinds as Scenario's search index stores them. Listing through search (not
         // assets_list) covers every source type (edits, video2video...) and returns
         // thumbnails for videos and 3D. Text and JSON assets stay out of the Library.
+        // The index has no audio, so Audio lists the project's assets by type instead.
         static readonly (string id, string label, string[] kinds)[] Kinds =
         {
-            ("", "All", new[] { "image", "image-hdr", "video", "3d", "audio" }),
+            ("", "All", new[] { "image", "image-hdr", "video", "3d" }),
             ("image", "Images", new[] { "image", "image-hdr" }),
             ("video", "Videos", new[] { "video" }),
             ("3d", "3D", new[] { "3d" }),
@@ -29,6 +30,7 @@ namespace Scenario.Editor.UI
         };
 
         const int PageSize = 40;
+        static readonly string[] AudioTypes = { "txt2audio", "audio2audio", "video2audio", "uploaded-audio" };
 
         public override string Id => "library";
 
@@ -45,6 +47,7 @@ namespace Scenario.Editor.UI
         string _kind = "";
         string _query = "";
         int _offset;
+        string _pageToken = "";
         bool _hasMore;
         bool _loading;
         bool _loaded;
@@ -172,13 +175,15 @@ namespace Scenario.Editor.UI
             foreach (var (id, label, _) in Kinds)
             {
                 var k = id;
-                _kinds.Add(Ui.Chip(label, null, _kind == id, () =>
-                {
-                    _kind = k;
-                    BuildKinds();
-                    Reload();
-                }, "sc-chip-sm"));
+                _kinds.Add(Ui.Chip(label, null, _kind == id, () => SelectKind(k), "sc-chip-sm"));
             }
+        }
+
+        internal void SelectKind(string kind)
+        {
+            _kind = kind;
+            BuildKinds();
+            Reload();
         }
 
         void Reload()
@@ -186,6 +191,7 @@ namespace Scenario.Editor.UI
             _version++;
             _assets.Clear();
             _offset = 0;
+            _pageToken = "";
             _hasMore = false;
             _selected = null;
             _loaded = true;
@@ -201,18 +207,27 @@ namespace Scenario.Editor.UI
             _loading = true;
             DrawStatus();
             var query = _query.Trim();
-            var kinds = Kinds.First(k => k.id == _kind).kinds;
-            var args = new JObject
+            var listed = _kind == "audio";
+            Result<JObject> result;
+            if (listed)
             {
-                ["target"] = "assets",
-                ["query"] = query,
-                ["filter"] = "kind IN [" + string.Join(", ", kinds.Select(k => "\"" + k + "\"")) + "]",
-                ["include_urls"] = true,
-                ["limit"] = PageSize,
-                ["offset"] = _offset,
-            };
-            if (query.Length == 0) args["sort_by"] = new JArray("createdAt:desc");
-            var result = await S.Client.Search(args);
+                result = await S.Client.ListAssets(new JObject { ["types"] = new JArray(AudioTypes) }, PageSize, _pageToken, includeUrls: true);
+            }
+            else
+            {
+                var kinds = Kinds.First(k => k.id == _kind).kinds;
+                var args = new JObject
+                {
+                    ["target"] = "assets",
+                    ["query"] = query,
+                    ["filter"] = "kind IN [" + string.Join(", ", kinds.Select(k => "\"" + k + "\"")) + "]",
+                    ["include_urls"] = true,
+                    ["limit"] = PageSize,
+                    ["offset"] = _offset,
+                };
+                if (query.Length == 0) args["sort_by"] = new JArray("createdAt:desc");
+                result = await S.Client.Search(args);
+            }
             if (version != _version) return;
             _loading = false;
             if (!result.Ok)
@@ -221,9 +236,24 @@ namespace Scenario.Editor.UI
                 return;
             }
             var list = result.Value["assets"] as JArray ?? result.Value["results"] as JArray ?? result.Value["hits"] as JArray ?? new JArray();
-            _offset += list.Count;
-            var total = result.Value["estimatedTotalHits"]?.Type == JTokenType.Integer ? (int)result.Value["estimatedTotalHits"] : 0;
-            _hasMore = list.Count == PageSize && _offset < total;
+            if (listed)
+            {
+                // Newest first; a query keeps the assets whose prompt or description has every word.
+                _pageToken = Json.Str(result.Value, "nextPaginationToken");
+                _hasMore = _pageToken.Length > 0;
+                var words = query.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                list = new JArray(list.OfType<JObject>().Where(a =>
+                {
+                    var text = (Json.Str(a, "prompt") + " " + Json.Str(a, "description")).ToLowerInvariant();
+                    return words.All(text.Contains);
+                }));
+            }
+            else
+            {
+                _offset += list.Count;
+                var total = result.Value["estimatedTotalHits"]?.Type == JTokenType.Integer ? (int)result.Value["estimatedTotalHits"] : 0;
+                _hasMore = list.Count == PageSize && _offset < total;
+            }
             foreach (var asset in list.OfType<JObject>())
             {
                 if (_pickKind.Length > 0 && BaseKind(Files.KindOf(asset)) != _pickKind) continue;
@@ -372,7 +402,7 @@ namespace Scenario.Editor.UI
             {
                 AssetId = id, Kind = assetKind, Label = Json.Str(selected, "description", id), ThumbUrl = Json.Str(selected, "url"),
             });
-            buttons.Add(Ui.IconButton("external", "Open on Scenario", () => Application.OpenURL("https://app.scenario.com/assets/" + id), "sc-btn-sm"));
+            buttons.Add(Ui.IconButton("external", "Open on Scenario", () => Application.OpenURL(S.AssetLink(id)), "sc-btn-sm"));
             buttons.Add(Ui.IconButton("copy", "Copy asset id", () =>
             {
                 EditorGUIUtility.systemCopyBuffer = id;

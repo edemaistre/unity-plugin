@@ -28,7 +28,7 @@ namespace Scenario.Editor
         /// <summary>Creative Units of the whole job (charged when known, else quoted).</summary>
         public double Cu;
 
-        public string WebUrl => AssetId.Length > 0 ? $"https://app.scenario.com/assets/{AssetId}" : "";
+        public string WebUrl => Links.Asset(AssetId, TeamId, ProjectId);
     }
 
     public static class Provenance

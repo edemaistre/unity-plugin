@@ -4,6 +4,7 @@ using System.Linq;
 using Scenario.Editor.Core;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.Video;
 
 namespace Scenario.Editor
@@ -100,6 +101,36 @@ namespace Scenario.Editor
             var names = new List<string>();
             for (var t = go.transform; t != null; t = t.parent) names.Insert(0, t.name);
             return string.Join("/", names);
+        }
+
+        /// <summary>The object at a hierarchy path ("Parent/Child") in the loaded scenes, or null.</summary>
+        public static GameObject FindByPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            var parts = path.Trim('/').Split('/');
+            for (var i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded) continue;
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    if (root.name != parts[0]) continue;
+                    var current = root.transform;
+                    for (var p = 1; p < parts.Length && current != null; p++)
+                    {
+                        Transform next = null;
+                        foreach (Transform child in current)
+                            if (child.name == parts[p])
+                            {
+                                next = child;
+                                break;
+                            }
+                        current = next;
+                    }
+                    if (current != null) return current.gameObject;
+                }
+            }
+            return null;
         }
 
         public static Vector3 Pivot()
@@ -291,9 +322,13 @@ namespace Scenario.Editor
             foreach (var file in files.Where(f => f.Kind == "image" || f.Kind == ""))
                 if (!maps.ContainsKey(file.Role)) maps[file.Role] = file.Path;
             if (maps.Count == 0) return;
-            var any = maps.Values.First();
-            var folder = Path.GetDirectoryName(any)?.Replace('\\', '/');
-            var material = MaterialBuilder.Build(maps, $"{folder}/{Files.Slug(name)}.mat");
+            // Named after the color map, which carries the result's id: prompt-id.mat.
+            var main = maps.TryGetValue("albedo", out var albedo) ? albedo : maps.TryGetValue("base", out var b) ? b : maps.Values.First();
+            var folder = Path.GetDirectoryName(main)?.Replace('\\', '/');
+            var stem = Path.GetFileNameWithoutExtension(main);
+            foreach (var suffix in new[] { "-albedo", "-base", "-main" })
+                if (stem.EndsWith(suffix)) stem = stem.Substring(0, stem.Length - suffix.Length);
+            var material = MaterialBuilder.Build(maps, $"{folder}/{stem}.mat");
             result.Asset = material;
             var renderers = new List<Renderer>();
             if (target != null) renderers.AddRange(target.GetComponentsInChildren<Renderer>());

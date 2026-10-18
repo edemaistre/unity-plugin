@@ -812,34 +812,7 @@ namespace Scenario.Editor.Agent
             return go;
         }
 
-        public static GameObject FindOrNull(string path)
-        {
-            if (string.IsNullOrEmpty(path)) return null;
-            var parts = path.Trim('/').Split('/');
-            for (var i = 0; i < SceneManager.sceneCount; i++)
-            {
-                var scene = SceneManager.GetSceneAt(i);
-                if (!scene.isLoaded) continue;
-                foreach (var root in scene.GetRootGameObjects())
-                {
-                    if (root.name != parts[0]) continue;
-                    var current = root.transform;
-                    for (var p = 1; p < parts.Length && current != null; p++)
-                    {
-                        Transform next = null;
-                        foreach (Transform child in current)
-                            if (child.name == parts[p])
-                            {
-                                next = child;
-                                break;
-                            }
-                        current = next;
-                    }
-                    if (current != null) return current.gameObject;
-                }
-            }
-            return null;
-        }
+        public static GameObject FindOrNull(string path) => Placer.FindByPath(path);
 
         public static string PathOf(GameObject go) => Placer.PathOf(go);
 

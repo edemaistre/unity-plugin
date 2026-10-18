@@ -82,9 +82,9 @@ namespace Scenario.Editor.UI
             _keyButton.style.marginTop = 10;
             _keyForm.Add(_keyButton);
             var links = Ui.Row(
-                Link("Get an API key", "https://app.scenario.com"),
+                Link("Get an API key", Links.ApiKeys),
                 Ui.Spacer(),
-                Link("Create an account", "https://app.scenario.com"));
+                Link("Create an account", Links.App));
             links.style.marginTop = 8;
             _keyForm.Add(links);
             _box.Add(_keyForm);

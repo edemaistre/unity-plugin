@@ -197,7 +197,7 @@ namespace Scenario.Editor.UI
             var first = row.AssetIds.FirstOrDefault();
             if (!string.IsNullOrEmpty(first))
             {
-                menu.AddItem(new GUIContent("Open on Scenario"), false, () => Application.OpenURL("https://app.scenario.com/assets/" + first));
+                menu.AddItem(new GUIContent("Open on Scenario"), false, () => Application.OpenURL(S.AssetLink(first, row)));
                 menu.AddItem(new GUIContent("Copy asset id"), false, () => EditorGUIUtility.systemCopyBuffer = first);
             }
             if (row.JobId.Length > 0) menu.AddItem(new GUIContent("Copy job id"), false, () => EditorGUIUtility.systemCopyBuffer = row.JobId);

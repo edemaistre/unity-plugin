@@ -220,6 +220,16 @@ namespace Scenario.Editor.Tests
             Assert.IsNotNull(material.GetTexture(normalSlot), "normal map");
             if (MaterialBuilder.Current != Pipeline.HighDefinition)
                 Assert.IsNotNull(material.GetTexture("_MetallicGlossMap"), "packed metallic and smoothness");
+            var albedoStem = Path.GetFileNameWithoutExtension(files.First(f => f.Role == "albedo").Path);
+            Assert.AreEqual(albedoStem.Substring(0, albedoStem.Length - "-albedo".Length), material.name, "named after the result, with its id");
+
+            // A second material from the same maps keeps the first one's files intact.
+            var target2 = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _made.Add(target2);
+            var second = (Material)Place(OutputTypes.Material, files, "Mossy stone", target2, create: false).Asset;
+            Assert.AreNotEqual(AssetDatabase.GetAssetPath(material), AssetDatabase.GetAssetPath(second));
+            var maskSlot = MaterialBuilder.Current == Pipeline.HighDefinition ? "_MaskMap" : "_MetallicGlossMap";
+            Assert.AreNotEqual(AssetDatabase.GetAssetPath(material.GetTexture(maskSlot)), AssetDatabase.GetAssetPath(second.GetTexture(maskSlot)), "each material packs its own map");
 
             // A finished job's files come back with their roles from provenance.
             var again = Importer.FromPaths(files.Select(f => f.Path));
@@ -299,6 +309,29 @@ namespace Scenario.Editor.Tests
             Assert.AreSame(clip, player.clip);
             Assert.IsTrue(player.isLooping);
             Assert.AreEqual(VideoRenderMode.MaterialOverride, player.renderMode);
+        }
+
+        [Test]
+        public void PlaceTarget_ResolvesByPath_WhenTheSceneHasNoGlobalId()
+        {
+            var parent = new GameObject("ScenarioTestParent-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            var child = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            child.name = "Target";
+            child.transform.SetParent(parent.transform);
+            try
+            {
+                // An object in an unsaved scene: its GlobalObjectId does not resolve, the path does.
+                var byPath = new JobRow { PlaceTarget = "", PlaceTargetPath = Placer.PathOf(child) };
+                Assert.AreEqual(child.GetInstanceID(), ScenarioService.ResolveTarget(byPath)?.GetInstanceID());
+                var both = new JobRow { PlaceTarget = GlobalObjectId.GetGlobalObjectIdSlow(child).ToString(), PlaceTargetPath = Placer.PathOf(child) };
+                Assert.AreEqual(child.GetInstanceID(), ScenarioService.ResolveTarget(both)?.GetInstanceID());
+                Assert.IsNull(ScenarioService.ResolveTarget(new JobRow { PlaceTargetPath = parent.name + "/Missing" }));
+                Assert.IsNull(ScenarioService.ResolveTarget(new JobRow()));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(parent);
+            }
         }
 
         [Test]

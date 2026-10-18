@@ -37,6 +37,10 @@ namespace Scenario.Editor.Tests
             _server.Tools["recommend"] = (args, i) => FakeMcp.Fixture("recommend_3d.sse.txt");
             _server.Tools["workflows_list"] = (args, i) => FakeMcp.Fixture("workflows.sse.txt");
             _server.Tools["search"] = (args, i) => FakeMcp.Result(new JObject { ["assets"] = new JArray(), ["estimatedTotalHits"] = 0, ["offset"] = 0 });
+            _server.Tools["assets_list"] = (args, i) => FakeMcp.Result(new JObject
+            {
+                ["assets"] = new JArray(new JObject { ["id"] = "asset_audio0001", ["kind"] = "audio", ["prompt"] = "Sword swing whoosh", ["mimeType"] = "audio/wav" }),
+            });
             _server.Tools["jobs_list"] = (args, i) => FakeMcp.Fixture("jobs.sse.txt");
             _s = ScenarioService.UseForTests(_server, TempDir.Make("ui"));
         }
@@ -109,6 +113,17 @@ namespace Scenario.Editor.Tests
                 yield return Frames(4);
                 Assert.IsNotNull(_window.ViewForTests(id).panel, $"{id} is shown");
             }
+
+            // Scenario's search has no audio: the Audio filter lists the project's assets by type.
+            _window.Show("library");
+            ((LibraryView)_window.ViewForTests("library")).SelectKind("audio");
+            yield return Frames(6);
+            var listCall = _server.ToolCalls.LastIndexOf("assets_list");
+            Assert.GreaterOrEqual(listCall, 0, "assets_list was called");
+            CollectionAssert.Contains(_server.ToolArguments[listCall]["filters"]["types"].Select(t => (string)t), "txt2audio");
+            Assert.IsNotNull(Q("asset-asset_audio0001"), "the audio asset shows");
+            _window.Show("create");
+            yield return Frames(2);
 
             _window.OpenPalette();
             yield return Frames(2);

@@ -137,6 +137,34 @@ namespace Scenario.Editor.Tests
         }
 
         [Test]
+        public void WorkflowJobReportingZero_KeepsTheQuote()
+        {
+            var ledger = new JobLedger(_path);
+            var workflow = ledger.AddIntent("all", "", "True 4-Pose", new JObject(), "fp-w", 16, 1);
+            workflow.WorkflowId = "wflow_test";
+            ledger.MarkSubmitted(workflow.LocalId, "job_w", "queued", 2);
+            ledger.ApplyJob(new JObject { ["jobId"] = "job_w", ["status"] = "success", ["cuCost"] = 0 }, 3);
+            Assert.IsNull(workflow.ChargedCu, "a workflow's own row reports 0; its steps carry the cost");
+            ledger.ApplyJob(new JObject { ["jobId"] = "job_w", ["status"] = "success", ["cuCost"] = 15 }, 4);
+            Assert.AreEqual(15, workflow.ChargedCu);
+            var model = ledger.AddIntent("image", "m", "M", new JObject(), "fp-m", 0, 5);
+            ledger.MarkSubmitted(model.LocalId, "job_m", "queued", 6);
+            ledger.ApplyJob(new JObject { ["jobId"] = "job_m", ["status"] = "success", ["cuCost"] = 0 }, 7);
+            Assert.AreEqual(0, model.ChargedCu, "a model job's 0 is a real charge");
+        }
+
+        [Test]
+        public void Links_OpenTheItemsWorkspace()
+        {
+            Assert.AreEqual("https://app.scenario.com/assets?openAssetId=asset_1&teamId=T1&projectId=proj_1", Links.Asset("asset_1", "T1", "proj_1"));
+            Assert.AreEqual("https://app.scenario.com/assets?openAssetId=asset_1", Links.Asset("asset_1"));
+            Assert.AreEqual("", Links.Asset(""));
+            Assert.AreEqual("https://app.scenario.com/workflows/wflow_x?teamId=T1&projectId=proj_1", Links.Workflow("wflow_x", "T1", "proj_1"));
+            Assert.AreEqual("https://app.scenario.com/?teamId=T1", Links.Home("T1"));
+            Assert.AreEqual("https://app.scenario.com/", Links.Home());
+        }
+
+        [Test]
         public void CancelRequestedHoldsUntilScenarioReportsIt()
         {
             var ledger = new JobLedger(_path);

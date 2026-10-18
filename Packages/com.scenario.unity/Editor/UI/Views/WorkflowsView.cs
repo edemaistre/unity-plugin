@@ -210,7 +210,7 @@ namespace Scenario.Editor.UI
             text.Add(Ui.Text(Json.Str(_workflow, "name"), "sc-model-name", "sc-wrap"));
             text.Add(Ui.Text(Json.Str(_workflow, "description"), "sc-dim", "sc-small", "sc-wrap"));
             var workflowId = Json.Str(_workflow, "id");
-            var openWeb = Ui.Button("Open on Scenario", () => Application.OpenURL("https://app.scenario.com/workflows/" + workflowId), "external", "sc-btn-outline", "sc-btn-sm");
+            var openWeb = Ui.Button("Open on Scenario", () => Application.OpenURL(Links.Workflow(workflowId, S.Client.TeamId, S.Client.ProjectId)), "external", "sc-btn-outline", "sc-btn-sm");
             openWeb.style.alignSelf = Align.FlexStart;
             openWeb.style.marginTop = 8;
             text.Add(openWeb);

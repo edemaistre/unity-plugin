@@ -73,8 +73,13 @@ namespace Scenario.Editor.Core
         public bool Place;
         /// <summary>GlobalObjectId of the object to place on, or "".</summary>
         public string PlaceTarget = "";
+        /// <summary>Hierarchy path of that object, for objects in unsaved scenes, which have no GlobalObjectId.</summary>
+        public string PlaceTargetPath = "";
         public List<string> Placed = new List<string>();
         public string Folder = "";
+        /// <summary>The Scenario team and project the request was sent to, for web links.</summary>
+        public string TeamId = "";
+        public string ProjectId = "";
         /// <summary>"window", "agent:&lt;client&gt;", "api", "menu".</summary>
         public string Origin = "window";
         public string Error = "";
@@ -264,8 +269,10 @@ namespace Scenario.Editor.Core
                 state = JobState.CancelRequested; // the status changes only when Scenario reports it
             row.State = state;
             if (job["assetIds"] is JArray assets && assets.Count > 0) row.AssetIds = assets.Select(a => a.ToString()).ToList();
-            if (job["cuCost"] != null) row.ChargedCu = Json.Num(job, "cuCost");
-            else if (job["billing"] is JObject billing && billing["cuCost"] != null) row.ChargedCu = Json.Num(billing, "cuCost");
+            double? cu = job["cuCost"] != null ? Json.Num(job, "cuCost")
+                : job["billing"] is JObject billing && billing["cuCost"] != null ? Json.Num(billing, "cuCost") : (double?)null;
+            // A workflow job reports 0 itself; its steps carry the cost. Keep the quote then.
+            if (cu.HasValue && (cu.Value > 0 || row.WorkflowId.Length == 0)) row.ChargedCu = cu;
             if (job["progress"] != null) row.Progress = (float)Json.Num(job, "progress");
             if (errorText.Length > 0) row.Error = errorText;
             row.UpdatedAt = now;

@@ -140,9 +140,9 @@ namespace Scenario.Editor.UI
             _content.Add(Ui.Section("About"));
             _content.Add(Ui.Text($"Scenario for Unity {McpClient.Version} · Unity {Application.unityVersion}", "sc-dim", "sc-small"));
             var links = Ui.Row(
-                Link("Documentation", "https://github.com/scenario-labs/unity-plugin#readme"),
-                Link("Report an issue", "https://github.com/scenario-labs/unity-plugin/issues"),
-                Link("Scenario", "https://app.scenario.com"));
+                Link("Documentation", Links.Repository + "#readme"),
+                Link("Report an issue", Links.Repository + "/issues"),
+                Link("Scenario", S.HomeLink));
             links.style.marginTop = 6;
             _content.Add(links);
         }
