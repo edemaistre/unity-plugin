@@ -100,21 +100,45 @@ namespace Scenario.Editor
         readonly HashSet<string> _importing = new HashSet<string>();
         double _nextReconcile;
 
-        ScenarioService()
+        ScenarioService() : this(new HttpTransport(), CredentialStore.ForUser(), LedgerPath, CatalogPath, readEnvironment: true)
         {
-            Client = new McpClient(new HttpTransport());
-            Credentials = CredentialStore.ForUser();
-            Ledger = new JobLedger(LedgerPath);
+        }
+
+        ScenarioService(ITransport transport, CredentialStore credentials, string ledgerPath, string catalogPath, bool readEnvironment)
+        {
+            Client = new McpClient(transport);
+            Credentials = credentials;
+            Ledger = new JobLedger(ledgerPath);
             Ledger.Load();
             Ledger.Changed += () => Changed?.Invoke();
-            Catalog = new Catalog(CatalogPath);
+            Catalog = new Catalog(catalogPath);
             Catalog.Load();
             _oauth = new OAuthClient(Client.Transport);
             Client.SpendingDisabled = Environment.GetEnvironmentVariable("SCENARIO_NO_SPEND") == "1" || ScenarioUserSettings.instance.SpendingDisabled;
-            Restore();
+            Restore(readEnvironment);
             EditorApplication.update += Tick;
             AssemblyReloadEvents.beforeAssemblyReload += () => EditorApplication.update -= Tick;
             ResumeImports();
+        }
+
+        /// <summary>
+        /// Tests: replaces the shared service with one on this transport, with its ledger,
+        /// catalog and credentials in a temp folder and no environment credentials.
+        /// </summary>
+        internal static ScenarioService UseForTests(ITransport transport, string folder)
+        {
+            ResetForTests();
+            var credentials = new CredentialStore(System.IO.Path.Combine(folder, "credentials.json"), new MemorySecretStore());
+            _instance = new ScenarioService(transport, credentials, System.IO.Path.Combine(folder, "jobs.json"), System.IO.Path.Combine(folder, "catalog.json"), readEnvironment: false);
+            return _instance;
+        }
+
+        /// <summary>Tests: drops the shared service; the next use builds the real one.</summary>
+        internal static void ResetForTests()
+        {
+            if (_instance == null) return;
+            EditorApplication.update -= _instance.Tick;
+            _instance = null;
         }
 
         void Emit() => Changed?.Invoke();
@@ -131,9 +155,9 @@ namespace Scenario.Editor
 
         // --- Sign-in ---------------------------------------------------------
 
-        void Restore()
+        void Restore(bool readEnvironment)
         {
-            var env = CredentialStore.FromEnvironment();
+            var env = readEnvironment ? CredentialStore.FromEnvironment() : null;
             if (env != null)
             {
                 Client.SetAuth(new ApiKeyAuth(env.ApiKey, env.Secret, fromEnvironment: true));

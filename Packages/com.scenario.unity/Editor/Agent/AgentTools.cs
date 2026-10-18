@@ -49,7 +49,9 @@ namespace Scenario.Editor.Agent
             "Scene objects are addressed by hierarchy path (Root/Child). Each scene edit is one Undo step the user can revert.";
 
         static ScenarioService S => ScenarioService.Instance;
-        static readonly List<Tool> Tools = Build();
+        // Built on first use: Build() reads static helpers declared further down.
+        static List<Tool> _tools;
+        static List<Tool> Tools => _tools ?? (_tools = Build());
 
         public static JArray List()
         {
