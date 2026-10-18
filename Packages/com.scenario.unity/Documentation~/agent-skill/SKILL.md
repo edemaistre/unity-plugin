@@ -1,6 +1,6 @@
 ---
 name: scenario-unity
-description: Use when an MCP server named scenario-unity (Scenario for Unity, http://127.0.0.1:8791/mcp) is connected, to generate images, video, 3D models, PBR materials, skyboxes or audio with Scenario models and place them in an open Unity scene, or to inspect and edit that scene.
+description: Use when an MCP server named scenario-unity (Scenario for Unity, http://127.0.0.1:8791/mcp) is connected, to generate images, video, 3D models, PBR materials, skyboxes or audio with Scenario models, to edit, retexture, remesh, rig, animate or split 3D models, and to place the results in an open Unity scene, or to inspect and edit that scene.
 ---
 
 # Scenario for Unity: agent guide
@@ -21,11 +21,11 @@ Costs are in Creative Units (CU).
 - Above the per-call limit or the session budget, the call waits up to two minutes for the user's **Approve** in Unity. Tell the user you are waiting. "Not approved" means nothing was sent; do not retry unless the user asks.
 - **Unknown outcome.** If a paid call returns "The outcome is unknown", the request may have run and been charged. Never call it again for the same request. Call `jobs` with its `local_id` a minute later.
 - If spending is off (Settings or `SCENARIO_NO_SPEND=1`), paid tools refuse before sending. Pricing, browsing, imports, uploads and scene tools still work.
-- `upload_reference`, `import_asset`, `models_find`, `model_schema` and `estimate` are free.
+- `upload_reference`, `import_asset`, `models_find`, `motions_find`, `model_schema` and `estimate` are free.
 
 ## Pick a model
 
-- `models_find` with `output_type` (image, video, model3d, audio, material, skybox) lists the catalog, including the team's own trained models.
+- `models_find` with `output_type` (image, video, model3d, motion, audio, material, skybox) lists the catalog, including the team's own trained models.
 - `models_find` with `recommend_for_prompt` returns Scenario's ranked picks for a prompt, with cost and speed notes. Prefer it when the user did not name a model.
 - `model_schema` gives the inputs: names, options, ranges, defaults, which inputs are files. Send only parameters the schema lists; unknown names are refused before pricing.
 
@@ -39,12 +39,20 @@ Costs are in Creative Units (CU).
 | material | material for the active pipeline with its maps, on a new sphere | set on the target's renderers and its children's |
 | skybox | `Skybox/Panoramic` material set as the scene skybox | same |
 | model3d | GLB imported as a prefab, instance at the Scene view pivot | instance placed next to the target |
+| motion | animated GLB with an Animator Controller (one state per clip), instance at the pivot; it plays in Play mode | instance placed next to the target |
 | audio | AudioClip on a new AudioSource | on the target's AudioSource (added if missing) |
 | video | VideoClip on a new screen quad | on the target's VideoPlayer (added if missing) |
 
 The result has `files` (Unity asset paths), `placed` (hierarchy paths), `asset_ids` (Scenario ids, reusable as inputs), `job_id`, `quoted_cu` and `charged_cu`. `place: false` imports without touching the scene. If `next` says the job is still running, call `jobs` with `local_id` and `wait_seconds`.
 
 File inputs (reference images, a start frame, a 3D model, audio) take a Scenario asset id or a Unity asset path; Unity files are uploaded once, free.
+
+3D results, what to expect:
+
+- One model per result: the OBJ, MTL and PBR-map copies some models add are skipped. FBX, Blender and VOX results arrive as GLB.
+- A rig that returns walk and run files (Meshy Rigging, Tripo with `includeRiggedModel`) is one model whose controller holds every clip. Rigs written in centimeters are placed at 1% scale.
+- Gaussian splats (TripoSplat, HY World, Marble) are saved as `.ply` or `.spz` and not placed: tell the user Unity needs a Gaussian splat renderer package.
+- Meshy 7.1 defaults to a 30,000-triangle remesh at the same price; send `shouldRemesh: false` for the full mesh (about a million triangles).
 
 ## Chain steps
 
@@ -54,10 +62,15 @@ Feed one result into the next model through its file input:
 - Image to material or skybox: PATINA Image to Maps, HY World Image to Skybox.
 - Image to video: an img2video model with the image as start frame.
 - Clean up: background removal, upscale, vectorize, pixelate.
-- 3D: retexture, retopology, UV unwrap, rigging, split into parts.
+- 3D texture: retexture (Meshy 7 Retexture, Tripo 3.0 Texturing, Tencent Texture Edit, Trellis 2, YVO3D), UV unwrap (Tripo Smart UV, Meshy, Tencent).
+- 3D shape: edit with a prompt (Claude Opus 5.5 3D, Astra 3D; prompt only, no reference image), retopology (Tripo Retopology v3, Hunyuan Polygen), remesh to a polycount (Meshy Remesh), refine from an image (UltraShape).
+- Rig and animate: rig a character (Uthana, Meshy, Cartwheel, Tripo), rig a creature (Tripo Rigging 2.5, `rigType`), a library motion (Meshy Animation: `actionId`, for example 30 Casual Walk, 106 Confident Walk, 4 Attack, 22 FunnyDancing 01; `motions_find` searches all 656 by name or category), a motion from a prompt (Cartwheel, Uthana) or from a video (Cartwheel, Uthana).
+- Parts and style: split into parts (Tripo Segmentation v2, Hunyuan 3D Part, Hitem3D Split, Rodin Bang), stylize (Tripo Stylization: LEGO, voxel, Voronoi; Hitem3D Multicolor).
+- Inputs Scenario needs although the schema says optional: Cartwheel motions need `characterModel` (a 3D model) or `characterFile` (an image, much dearer); YVO3D needs `referenceImage` unless `retexture` is false. The tool says so before pricing.
+- Pass a GLB asset id even to models that read FBX only (Tencent Texture Edit): the plugin sends Scenario's FBX copy of it, free.
 - Video: upscale, add sound, restyle. Audio: voice change, voice isolation.
 
-`models_find` with a `capability` (img23d, img2video, 3d23d, video2audio, audio2audio) finds alternatives.
+`models_find` with a `capability` (img23d, img2video, 3d23d, video23d, video2audio, audio2audio) finds alternatives.
 
 ## Workflows
 

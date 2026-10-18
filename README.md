@@ -1,8 +1,8 @@
 # Scenario for Unity
 
-Generate images, video, 3D models, PBR materials, skyboxes and audio with every [Scenario](https://scenario.com) model, from a window inside the Unity Editor. You see the price in Creative Units (CU) before anything is spent, and the result lands in your project as a wired Unity asset: a sprite on the selected renderer, a prefab at the Scene view pivot, a material on the selected mesh, the scene's skybox. AI agents such as Claude Code, Codex and Cursor can drive the same actions through a local MCP server in the editor.
+Generate images, video, 3D models, character animations, PBR materials, skyboxes and audio with every [Scenario](https://scenario.com) model, from a window inside the Unity Editor. The 3D models can then be edited, retextured, remeshed, rigged, animated or split without leaving Unity. You see the price in Creative Units (CU) before anything is spent, and the result lands in your project as a wired Unity asset: a sprite on the selected renderer, a prefab at the Scene view pivot, a material on the selected mesh, the scene's skybox. AI agents such as Claude Code, Codex and Cursor can drive the same actions through a local MCP server in the editor.
 
-![The Scenario window: model, prompt and price on the left, results tray below](docs/images/window-0.1.0.png)
+![The Scenario window: navigation on the left, the model and prompt with the price on the Generate button, the results below](docs/images/window-0.1.0.png)
 
 **Version 0.1.0** <!-- x-release-please-version -->. Unity 6.0 or later. Tested on Unity 6.3 (6000.3.21f1) with URP on macOS. Editor only: nothing from the package ships in a player build. MIT license.
 
@@ -32,7 +32,8 @@ Secrets never go into your Unity project: they live in the macOS Keychain or the
 |---|---|---|
 | Image | GPT Image 2.5 Sunburst, GPT Image 2.5 Flare, Nano Banana 2.1, Seedream 5.0 Pro, Retro Diffusion Plus | a texture or sprite, set on the selected SpriteRenderer, UI Image, RawImage or renderer, or a new quad or sprite |
 | Video | Minimax H3, Gemini Omni 1.1 Flash, Wan 3.0, Seedance 2.5 | a VideoClip on the selected VideoPlayer, or a new screen quad |
-| 3D | Meshy 7.1, Rodin Gen-2.5, Hunyuan 3D 3.1 Pro, Tripo P2, Meshy T2.5 Smart Topology | a GLB imported as a prefab, placed on the ground at the Scene view pivot, optional MeshCollider |
+| 3D | Meshy 7.1, Rodin Gen-2.5, Hunyuan 3D 3.1 Pro, Tripo P2, Meshy T2.5 Smart Topology, Voxel Crafter | a GLB imported as a prefab, placed on the ground at the Scene view pivot, optional MeshCollider |
+| Motion | Cartwheel and Uthana text to motion, Meshy Text to Motion, Meshy Animation (656 library motions by name), Cartwheel and Uthana video to motion | an animated GLB with an Animator Controller, one state per clip, playing in Play mode |
 | Audio | Mirelo SFX 2.0, ElevenLabs Sound Effects 2, Sonilo V1.1, ElevenLabs Music v2.5, Gemini 3.8 Flash TTS | an AudioClip on the selected AudioSource, or a new one |
 | Material | PATINA Material, PATINA Image to Maps, PATINA Material Extract | a material for your render pipeline (Built-in, URP, HDRP) with normal, height and packed metallic and smoothness maps, set on the selected renderers |
 | Skybox | Scenario Skybox GPT, Scenario Skybox Flux, HY World Image to Skybox | a Skybox/Panoramic material set as the scene's skybox |
@@ -40,7 +41,18 @@ Secrets never go into your Unity project: they live in the macOS Keychain or the
 
 **Suggest** ranks the best models for your prompt. **Change** opens the model browser: search, favorites, team models. The settings form is built from each model's live schema, essentials first.
 
-**Next steps** turn any asset into the next one: an image into a 3D model, a video, a material, a skybox, or a cleaner image (remove background, upscale, vectorize, pixelate, edit by prompt); a 3D model into a retextured, retopologized, UV-unwrapped, rigged or split one; a video into an upscaled or restyled one, or one with sound; a voice into a changed or isolated one. They are on result cards, on a right-click in the Project window (**Scenario > Next Step**) and in the Inspector of any generated asset.
+**Next steps** turn any asset into the next one: an image into a 3D model, a Gaussian splat, a video, a material, a skybox, or a cleaner image (remove background, upscale, vectorize, pixelate, edit by prompt); a video into an upscaled or restyled one, one with sound, or a character animation; a voice into a changed or isolated one. They are on result cards, on a right-click in the Project window (**Scenario > Next Step**) and in the Inspector of any generated asset.
+
+For 3D models the steps cover every 3D operation on Scenario, each with a default model and its alternatives:
+
+| Group | Steps |
+|---|---|
+| Texture | Retexture (Meshy 7, Tripo 3.0, Tencent, Trellis 2, YVO3D), UV unwrap (Tripo, Meshy, Tencent) |
+| Shape | Edit with a prompt (Claude Opus 5.5 3D, Astra 3D), retopology (Tripo v3, Hunyuan Polygen), remesh to a polycount (Meshy), refine from an image (UltraShape) |
+| Rig and animate | Rig a character (Uthana, Meshy, Cartwheel, Tripo) or a creature (Tripo 2.5), animate from Meshy's motion library, from a prompt (Cartwheel, Uthana) or from a video (Cartwheel, Uthana) |
+| Parts and style | Split into parts (Tripo, Hunyuan 3D Part, Hitem3D, Rodin Bang), stylize as LEGO, voxels or Voronoi (Tripo), multicolor (Hitem3D) |
+
+Animated results come with their Animator Controller; a rig delivered with walk and run files becomes one character with every clip. Results stored as FBX, Blender or VOX files arrive as GLB, and inputs that only read FBX get Scenario's FBX copy of your model, free.
 
 **Workflows** lists your team's Scenario workflows and the featured public ones; their inputs become a form with a price.
 
@@ -92,7 +104,7 @@ The repository root is a Unity 6.3 project that hosts the package (`Packages/com
 Unity -batchmode -projectPath . -runTests -testPlatform EditMode -testResults results.xml
 ```
 
-The window tests need a graphics device and are skipped under `-nographics`. Two live checks run from `Assets/ScenarioDev/Editor` with `-executeMethod` and the test key in `SCENARIO_API_KEY` and `SCENARIO_API_SECRET`: `ScenarioDev.ContractCheck.Run` (free, needs `SCENARIO_NO_SPEND=1`) prices every quick pick, step and a set of workflows; `ScenarioDev.Acceptance.Run` (paid, needs `SCENARIO_ACCEPT=1`) runs one generation per type and records it in `tests/live/LEDGER.md`.
+The window tests need a graphics device and are skipped under `-nographics`. Two live checks run from `Assets/ScenarioDev/Editor` with `-executeMethod` and the test key in `SCENARIO_API_KEY` and `SCENARIO_API_SECRET`: `ScenarioDev.ContractCheck.Run` (free, needs `SCENARIO_NO_SPEND=1`) prices every quick pick, step and a set of workflows; `ScenarioDev.Acceptance.Run` (paid, needs `SCENARIO_ACCEPT=1`) runs one generation per type and records it in `tests/live/LEDGER.md`. `ScenarioDev.Accept3D.Import` (free) imports one real result of each 3D operation and checks the model, its rig and its clips, with a render of each; `ScenarioDev.Accept3D.Paid` sends a few 3D operations through the window's and the agent's paths. `ScenarioDev.E2E.OAuth` checks the browser sign-in against Scenario (a person signs in), and `ScenarioDev.E2E.Agent` with `tools/e2e_agent.py` has Claude Code drive the editor through the agent bridge.
 
 ## License
 
