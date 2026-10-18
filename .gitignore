@@ -32,3 +32,6 @@
 /AgentKit/
 /tests/live/out/
 /tests/out/
+
+# Commit lint tooling
+/node_modules/
