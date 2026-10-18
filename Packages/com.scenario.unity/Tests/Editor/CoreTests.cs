@@ -189,6 +189,31 @@ namespace Scenario.Editor.Tests
         }
 
         [Test]
+        public void WorkflowInputsDefinitionBecomesTheForm()
+        {
+            // The shape workflow_get returned on 2026-10-18.
+            var workflow = JObject.Parse(@"{""id"":""wflow_x"",""inputs_definition"":[
+                {""kind"":""image"",""label"":""Character Reference"",""name"":""image1"",""required"":{""always"":true},""type"":""file""},
+                {""kind"":""image"",""label"":""Style"",""name"":""image2"",""required"":{""always"":false},""type"":""file_array""},
+                {""label"":""Tagline"",""name"":""text1"",""prompt"":true,""promptSpark"":true,""required"":{""always"":false},""type"":""string""}]}");
+            var fields = SchemaForm.FieldsFromSchema(workflow);
+            Assert.AreEqual(3, fields.Count);
+            var image = SchemaForm.FileInputFor(fields, "image");
+            Assert.AreEqual("image1", image.Name);
+            Assert.AreEqual(FieldType.File, image.Type);
+            Assert.IsTrue(image.Required);
+            Assert.IsFalse(fields.Single(f => f.Name == "image2").Required);
+            Assert.IsTrue(fields.Single(f => f.Name == "text1").PromptSpark);
+            var values = SchemaForm.InitialValues(fields);
+            Assert.Contains("Add a character reference.", SchemaForm.Validate(fields, values));
+            values["image1"] = "asset_a";
+            values["image2"] = "asset_b";
+            var payload = SchemaForm.Payload(fields, values);
+            Assert.AreEqual(JTokenType.String, payload["image1"].Type, "a single file input is sent as one id");
+            Assert.AreEqual(JTokenType.Array, payload["image2"].Type);
+        }
+
+        [Test]
         public void ValidationAndPayloadTyping()
         {
             var schema = JObject.Parse(@"{""parameters"":[

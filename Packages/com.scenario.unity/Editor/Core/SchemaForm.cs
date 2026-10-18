@@ -61,7 +61,8 @@ namespace Scenario.Editor.Core
         public static List<Field> FieldsFromSchema(JObject schema, IDictionary<string, JToken[]> restrict = null)
         {
             var fields = new List<Field>();
-            var parameters = schema?["parameters"] as JArray ?? schema?["inputs"] as JArray;
+            // Models list "parameters"; workflow definitions list "inputs_definition".
+            var parameters = schema?["parameters"] as JArray ?? schema?["inputs"] as JArray ?? schema?["inputs_definition"] as JArray;
             if (parameters == null) return fields;
             foreach (var token in parameters)
             {
@@ -105,7 +106,7 @@ namespace Scenario.Editor.Core
                 MaxItems = rawType.EndsWith("array") ? (int)Json.Num(p, "max_length") : 0,
                 MaxLength = rawType == "string" ? (int)Json.Num(p, "max_length") : 0,
                 CostImpact = Json.Truthy(p["cost_impact"]) || Json.Truthy(p["costImpact"]),
-                PromptSpark = Json.Truthy(p["prompt_spark"]),
+                PromptSpark = Json.Truthy(p["prompt_spark"]) || Json.Truthy(p["promptSpark"]),
             };
             switch (rawType)
             {
