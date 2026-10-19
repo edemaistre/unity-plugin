@@ -19,7 +19,8 @@ namespace ScenarioDev
     /// are dropped. Agent: turns the agent bridge on and keeps the editor running until a stop file
     /// appears, so an agent CLI can drive it (tools/e2e_agent.py, tools/world_rehearsal.py). For long
     /// builds: SCENARIO_E2E_MINUTES (default 15), SCENARIO_E2E_AUTO_APPROVE and SCENARIO_E2E_BUDGET (CU,
-    /// for this run only; the user's settings come back at the end) and SCENARIO_E2E_SCENE (a new scene
+    /// for this run only; the user's settings come back at the end), SCENARIO_E2E_PORT (the bridge port, when
+    /// another editor already serves the default one) and SCENARIO_E2E_SCENE (a new scene
     /// with a camera and a light, saved at that path, for the agent to build in). Unity's audio is muted
     /// for the session.
     /// Run with -batchmode -executeMethod ScenarioDev.E2E.OAuth or .Agent.
@@ -87,6 +88,8 @@ namespace ScenarioDev
             settings.AgentCanEditScene = true;
             settings.AgentAutoApproveCu = EnvInt("SCENARIO_E2E_AUTO_APPROVE", settings.AgentAutoApproveCu);
             settings.AgentSessionBudgetCu = EnvInt("SCENARIO_E2E_BUDGET", settings.AgentSessionBudgetCu);
+            settings.AgentPort = EnvInt("SCENARIO_E2E_PORT", settings.AgentPort);
+            Debug.Log($"E2E settings: project '{settings.ProjectName}' ({settings.ProjectId}), port {settings.AgentPort}, auto-approve {settings.AgentAutoApproveCu} CU, budget {settings.AgentSessionBudgetCu} CU");
             var scene = Environment.GetEnvironmentVariable("SCENARIO_E2E_SCENE") ?? "";
             if (scene.Length > 0)
             {

@@ -329,11 +329,12 @@ namespace Scenario.Editor.Agent
                 new Tool
                 {
                     Name = "object_set", EditsScene = true,
-                    Description = "Changes an object's name, active state, parent, transform, tag or layer.",
+                    Description = "Changes an object's name, active state, parent, transform, tag or layer, and can give it collision.",
                     Schema = Schema(new[] { "path" }, ("path", Str("Hierarchy path.")), ("name", Str("New name.")), ("active", Bool("Active state.")),
                         ("parent", Str("New parent path, or empty for the scene root.")), ("position", Vec("Position.")), ("rotation", Vec("Euler angles.")),
                         ("scale", Vec("Local scale.")), ("local", Bool("Position and rotation in parent space (default false).")), ("tag", Str("Tag.")), ("layer", Str("Layer name.")),
-                        ("height", Num("Scale uniformly to this height in meters (after scale).")), ("ground", Bool("Sit it on the ground below, after the other changes."))),
+                        ("height", Num("Scale uniformly to this height in meters (after scale).")), ("ground", Bool("Sit it on the ground below, after the other changes.")),
+                        ("collider", Str("Collision so a player can walk on and into it: mesh (follows the shape) or box. Added only when no part has a collider yet.", "mesh", "box"))),
                     Run = ObjectSet,
                 },
                 new Tool
@@ -438,7 +439,9 @@ namespace Scenario.Editor.Agent
                         ("on", Str("Ground object path (a terrain): only its surface counts. Default: any collider.")),
                         ("height", Pair("[min, max] height of each copy in meters. Omit to keep the source's size.")), ("scale", Pair("[min, max] scale factor when height is not given.")),
                         ("random_yaw", Bool("Random turn, default true.")), ("tilt", Num("Most degrees a copy leans with the ground, default 0.")),
-                        ("max_slope", Num("Skip ground steeper than this, degrees, default 35.")), ("min_distance", Num("Meters between copies, default from their size.")),
+                        ("max_slope", Num("Skip ground steeper than this, degrees, default 35.")),
+                        ("min_slope", Num("Skip ground flatter than this, degrees, default 0. With tilt, dresses cliff faces with rocks.")),
+                        ("min_distance", Num("Meters between copies, default from their size.")),
                         ("keep_clear", Objects("Zones to leave empty: {center: [x, z], radius}.")), ("collider", Str("mesh (default), box or none.", "mesh", "box", "none")),
                         ("seed", Int("Same seed, same layout.")), ("name", Str("Group object name."))),
                     Run = Scatter,
@@ -1180,6 +1183,8 @@ namespace Scenario.Editor.Agent
         static Task<JObject> ObjectSet(JObject args, Context context)
         {
             var go = Find(Need(args, "path"));
+            var collider = S_(args, "collider");
+            if (collider.Length > 0 && collider != "mesh" && collider != "box") throw new ToolError("collider is mesh or box.");
             Undo.RecordObject(go, "Scenario agent: object_set");
             Undo.RecordObject(go.transform, "Scenario agent: object_set");
             if (args["name"] != null) go.name = S_(args, "name");
@@ -1211,7 +1216,14 @@ namespace Scenario.Editor.Agent
             }
             var scale = Vec3(args["scale"]);
             if (scale.HasValue) go.transform.localScale = scale.Value;
-            return Task.FromResult(Ok(SizeAndGround(go, args)));
+            var data = SizeAndGround(go, args);
+            if (collider.Length > 0)
+            {
+                var added = World.AddColliders(go, collider);
+                data["colliders_added"] = added;
+                if (added == 0) data["collider_note"] = go.GetComponentInChildren<Collider>() != null ? "It already has a collider: left as is." : "No mesh to build a collider from.";
+            }
+            return Task.FromResult(Ok(data));
         }
 
         static Type ComponentType(string name)
@@ -1591,6 +1603,7 @@ namespace Scenario.Editor.Agent
                 RandomYaw = B_(args, "random_yaw", true),
                 Tilt = Mathf.Clamp(F_(args, "tilt", 0), 0, 45),
                 MaxSlope = F_(args, "max_slope", 35),
+                MinSlope = Mathf.Max(0, F_(args, "min_slope", 0)),
                 MinDistance = Math.Max(0, F_(args, "min_distance", 0)),
                 Collider = S_(args, "collider", "mesh"),
                 Seed = I_(args, "seed", 1),
@@ -1610,11 +1623,13 @@ namespace Scenario.Editor.Agent
             };
             var skipped = new JObject();
             if (result.SkippedSlope > 0) skipped["too_steep"] = result.SkippedSlope;
+            if (result.SkippedFlat > 0) skipped["too_flat"] = result.SkippedFlat;
             if (result.SkippedClear > 0) skipped["keep_clear"] = result.SkippedClear;
             if (result.SkippedCrowded > 0) skipped["crowded"] = result.SkippedCrowded;
             if (result.SkippedNoGround > 0) skipped["no_ground"] = result.SkippedNoGround;
             if (skipped.HasValues) data["rejected_spots"] = skipped;
-            if (result.Placed < spec.Count) data["note"] = $"Only {result.Placed} of {spec.Count} fit: widen the area, lower min_distance or raise max_slope.";
+            if (result.Placed < spec.Count)
+                data["note"] = $"Only {result.Placed} of {spec.Count} fit: widen the area, lower min_distance or raise max_slope" + (spec.MinSlope > 0 ? ", or lower min_slope." : ".");
             return Task.FromResult(Ok(data));
         }
 

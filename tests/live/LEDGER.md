@@ -106,3 +106,35 @@ Claude Code (Opus) built a walkable world in a headless editor from the film pro
 | temple 2 | `model_meshy-7-1-txt23d` | `job_KsRLhQgqV1fA1CGYEUHaDgQa` | 120 | ok (client timeout) |
 
 Total 1,147 CU.
+
+## 2026-10-19: 3D model shoot-out (Scenario MCP, test project)
+
+Props, set pieces and the character for the world film, text and image routes; results and picks in the film folder's `qa/unity-world/shootout/README.md`.
+
+| Case | Model | Job | Charged CU | Result |
+|---|---|---|---|---|
+| pine, text | `model_meshy-7-1-txt23d` | `job_hcR6sWpBtNFRCXEv8gxC24jj` | 120 | ok, off brief (olive) |
+| temple, text | `model_meshy-7-1-txt23d` | `job_tC3pg9XD9MfU9Prxm3Bvd7Va` | 120 | ok, off brief (terracotta) |
+| pine, text | `model_meshy-t2-5-smart-topology` | `job_NU32Mi9MPhL33Xm96PUdENQ1` | 60 | ok, off brief (yellow-green) |
+| temple, text | `model_meshy-t2-5-smart-topology` | `job_2zpkvpYRuMhnrKgU5JcFcVd6` | 60 | ok, off brief (terracotta) |
+| pine, text | `model_tripo-p2-text-to-3d` | `job_fLWEKogqUW66uoAsXYz6E1WA` | 220 | ok |
+| temple, text | `model_tripo-p2-text-to-3d` | `job_9b23KtWP8Nw1iGEPsqzVMUU1` | 220 | ok |
+| pine concept | `model_openai-gpt-image-2-5-sunburst` | `job_pgmwV69SiwCXqLrM15ER8zQL` | 15 | ok |
+| temple concept | `model_openai-gpt-image-2-5-sunburst` | `job_PerhJ5551sFDxvXkzGJjkrPc` | 15 | ok |
+| pine, image | `model_meshy-7-1-img23d` | `job_XT71e3mKvNypMyocQ9dJqwWm` | 120 | ok |
+| temple, image | `model_meshy-7-1-img23d` | `job_jd39EwyxMqNHkuEveobyEc3e` | 120 | ok |
+| pine, image | `model_meshy-t2-5-smart-topology` | `job_5ie6cD9pMh6SRYwYwLMNS8D8` | 60 | ok |
+| temple, image | `model_meshy-t2-5-smart-topology` | `job_c2TEu2LMDttno61LNyHApjym` | 60 | ok |
+| pine, image | `model_tripo-p2-image-to-3d` | `job_zELXzYhSDKYQrYRaVDSyaPrA` | 220 | ok, pick for props |
+| temple, image | `model_tripo-p2-image-to-3d` | `job_61TzEtgEDNRE96Mg936gPr3W` | 220 | ok, pick for props |
+| pine, image | `model_scenario-claude-opus-5-5-3d` | `job_VXjtZFmLFM3UZ7ayHbuTN8Rs` | 700 | ok (.blend, GLB by conversion) |
+| temple, image | `model_scenario-claude-opus-5-5-3d` | `job_JUvjCw5CEfZT88rxHeD5HYFU` | 700 | ok (.blend, GLB by conversion) |
+| character concept | `model_openai-gpt-image-2-5-sunburst` | `job_p2XC5zLKTQ2fk6BqYJEY6mbj` | 12 | ok |
+| character, image | `model_meshy-7-1-img23d` | `job_EPKwwLYRxDE3YL8Ne7U5tNsy` | 120 | ok, pick for the character |
+| character, image | `model_meshy-t2-5-smart-topology` | `job_H6ndALAQ3EvbKaDDQvEVdYmP` | 60 | ok |
+| character, image | `model_tripo-p2-image-to-3d` | `job_eMAyo4pNJ548dhUsnjwyh66B` | 220 | ok |
+| character, text | `model_meshy-7-1-txt23d` | `job_jj6BLuUyzUcBi36Mh3ZPvKew` | 120 | ok, off brief (grey scarf) |
+| character, text | `model_tripo-p2-text-to-3d` | `job_jZLo7F9LwnePqxsWFAFf7QHi` | 220 | ok |
+| prompt spark, live shape check | `model_scenario-skybox-gpt` | `` | 0 | ok, recommended_prompt returned |
+
+Total 3,782 CU.
