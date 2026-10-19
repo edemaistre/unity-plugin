@@ -194,7 +194,7 @@ The agent gets three sets of tools:
 
 - **Scenario**: find a model, find a motion in Meshy's library, price, generate, run workflows, follow jobs, import, upload.
 - **Scene**: inspect the hierarchy, create and change objects and components, size them in meters and sit them on the ground, assign materials, set the skybox, save, read the console, and capture the Scene view or the main camera as an image it can look at.
-- **World**: build a terrain from a generated heightmap with ground materials painted by height and slope, scatter models on it with colliders, turn a rigged and animated character into a third-person player with a follow camera, and playtest in Play mode (the character walks, runs and jumps through waypoints; the result says what it reached and whether it fell) or record frames.
+- **World**: build a terrain from a generated heightmap with ground materials painted by height and slope, measure the ground along a route, scatter models on it with colliders or line them up along a path with lights, make a generated bridge or platform walkable (invisible walkway, rails, ramps to the ground), set the light and mood from a preset (sun, fog, ambient, URP post-processing), capture four angles at once, turn a rigged and animated character into a third-person player with a follow camera, and playtest in Play mode (the character walks, runs and jumps through waypoints; the result says what it reached and whether it fell) or record frames.
 
 Every scene edit is one Undo step. A paid call above the per-call limit (80 CU by default) or beyond the session budget (1,200 CU) waits for **Approve** in the window. The activity log lists every call.
 

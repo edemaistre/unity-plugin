@@ -27,6 +27,7 @@ Costs are in Creative Units (CU).
 
 - `models_find` with `output_type` (image, video, model3d, motion, audio, material, skybox) lists the catalog, including the team's own trained models.
 - `models_find` with `recommend_for_prompt` returns Scenario's ranked picks for a prompt, with cost and speed notes. Prefer it when the user did not name a model.
+- `models_find` with `sort: "newest"` lists the most recently added models first, with the date each was added. Check it before settling on a model you already know: a newer one may do better.
 - `model_schema` gives the inputs: names, options, ranges, defaults, which inputs are files. Send only parameters the schema lists; unknown names are refused before pricing.
 
 ## Generate and place
@@ -89,18 +90,28 @@ Each edit is one Undo step, so the user can revert anything you did.
 
 ## Walkable worlds
 
-From one prompt to a world a player can walk in:
+From one prompt to a world a player can walk in. The order below is the one that worked in rehearsals.
 
-1. `terrain_create`: ground with a collider. Shape it with a heightmap image you generate first (a top-down grayscale heightmap, white is high), level `flat_areas` where buildings go, and paint `layers` with generated materials (the first is the base; others by `min_height` or `min_slope`). `edge_falloff` makes an island or plateau.
-2. Generate the set pieces, then `object_set` with `height` (meters) and `ground: true` to size each one and sit it on the terrain. Typical heights: a person 1.8, a door 2.2, a house 6 to 9, a pine 8 to 14, a rock 0.5 to 2.
-3. `scatter` repeats a model on the ground (`on`: the terrain), with a `height` range, `keep_clear` zones around paths and buildings, and colliders.
-4. A character: generate it, rig it, animate idle, walk, run and jump (`motions_find` for library ids), then `make_playable` with those results. It builds the controller, sizes the character, matches speeds to the clips and sets up the follow camera.
-5. `play` with `action: "walk"` and waypoints (`run`, `jump`, `wait`) to playtest: it reports the points reached, falls (a drop longer than 4 m counts) and jumps. A walk longer than the call keeps going in Unity: the answer says `running`, and `play` with `action: "status"` and `wait_seconds` returns the result when it ends. `play` with `action: "stop"` before editing again; edits made in Play mode are lost. `record: true` (or `action: "record"`) writes PNG frames of the main camera at a fixed frame rate.
-6. `scene_save`.
+1. **Plan, then send everything at once.** Decide the layout in meters first: spawn, route, landmarks, the goal. Then send every generation with `wait: false` (heightmap, ground materials, skybox, character, set pieces, props, sounds, music) and follow them with `jobs`. Build with what lands while the 3D jobs run.
+2. **Ground.** `terrain_create` from a generated heightmap (top-down grayscale, white is high) with `layers` from generated materials (the first is the base; others by `min_height` or `min_slope`). `edge_falloff` makes an island or plateau. Measure it with `ground_height`: `points` for single spots, `from` and `to` for a profile with its steepest slope and biggest step. A route needs slopes under 50 degrees and steps under about 0.4 m. Rebuild with `flat_areas` for the spawn, building sites and both ends of a bridge, at heights read from `ground_height`.
+3. **Set pieces.** `object_set` with `height` (meters) and `ground: true` sizes each one and sits it on the terrain. Typical heights: a person 1.8, a door 2.2, a house 6 to 9, a pine 8 to 14, a rock 0.5 to 2. Look at each with `capture_view` and `around`. Regenerate a piece that reads wrong (a temple that comes back as a platform on stilts) with a clearer description rather than forcing it.
+4. **Bridges, stairs, platforms.** Generated ones are rarely walkable as they come: holes, a lip mid-deck, parts with no collision. Place and stretch the bridge so each end rests on a rim, then `make_walkable`: an invisible walkway on the deck with holes bridged and bumps smoothed, side rails, and ramps to the ground within 1.5 m of each end. Read `start` and `end` in the answer: `joined: "no"` with a note means that end floats or sinks; move the bridge or level the ground there, then run it again.
+5. **Dressing.** `scatter` trees and rocks (`on`: the terrain) with `keep_clear` zones over the route and the buildings, a little wider than the path. `place_along` lines the route with lanterns, posts or torches: `offset` 1.5 to 2.5 m keeps them off the path, `light: {}` adds a warm point light to each.
+6. **Light and mood.** `atmosphere` with a preset that matches the sky (golden_hour, midday, overcast, misty_morning, sunset, night), then single values on top (`fog_density`, `sun_elevation`, `saturation`, `bloom`). In URP it also adds a post-processing volume. Generate a skybox that matches the light.
+7. **Player.** Generate the character, rig it, animate idle, walk, run and jump (`motions_find` for library ids), then `make_playable` with those results. It builds the controller, sizes the character, matches speeds to the clips and sets up the follow camera.
+8. **Playtest in legs.** `play` with `action: "walk"` and waypoints (`run`, `jump`, `wait`), one leg at a time: spawn to the bridge, across it, on to the goal. It reports the points reached, falls (a drop longer than 4 m counts) and jumps. A walk longer than the call keeps going in Unity: the answer says `running`, and `play` with `action: "status"` and `wait_seconds` returns the result when it ends. Fix what fails, then walk the whole route once with no falls:
+   - stuck on an object: move it off the path, or widen `keep_clear` and scatter again;
+   - a fall at a bridge: `make_walkable` again and check both ends;
+   - stuck on open ground: `ground_height` around that point for a step or a steep slope, then level it with `flat_areas`.
+   `play` with `action: "stop"` before editing again: edits made in Play mode are lost. `record: true` (or `action: "record"`) writes PNG frames of the main camera at a fixed frame rate.
+9. **Sound.** Ambience and music as looping audio sources (`generate` with `output_type: "audio"`, then `component_set` `loop: true`), footsteps through `make_playable`'s `footstep`.
+10. `scene_save`.
 
 ## Check your work
 
 - `capture_view` renders the Scene view or a camera and returns the image. Look at it after placing results or editing the scene. With `upload: true` it also returns a Scenario asset id, so a capture can be the reference for the next generation.
+- `capture_view` with `around` (an object path or `[x, y, z]`) returns four three-quarter views in one image: top row from the south-west and south-east, bottom row from the north-west and north-east (+z is north). One call shows a piece from every side.
+- `capture_view` with `from` and `at` renders one view from any point: 1.7 m above the ground is a player's eye.
 - `console_logs` with `level: "error"` after imports or component changes.
 
 ## Good habits

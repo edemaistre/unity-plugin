@@ -499,6 +499,19 @@ namespace Scenario.Editor
             return GroundHit(point, colliders, null, out var hit) ? hit.point.y : float.NaN;
         }
 
+        /// <summary>Height of the terrain surface under a point, or NaN where no terrain is.</summary>
+        public static float TerrainHeightAt(Vector3 point)
+        {
+            foreach (var terrain in Terrain.activeTerrains)
+            {
+                var corner = terrain.transform.position;
+                var size = terrain.terrainData.size;
+                if (point.x >= corner.x && point.x <= corner.x + size.x && point.z >= corner.z && point.z <= corner.z + size.z)
+                    return terrain.SampleHeight(point) + corner.y;
+            }
+            return float.NaN;
+        }
+
         static void SitOn(GameObject go, Vector3 point, float sink)
         {
             var bounds = BoundsOf(go);
@@ -507,7 +520,7 @@ namespace Scenario.Editor
         }
 
         /// <summary>The highest hit straight below (from far above) on the ground colliders, skipping anything under ignore.</summary>
-        static bool GroundHit(Vector3 point, HashSet<Collider> only, Transform ignore, out RaycastHit best)
+        static bool GroundHit(Vector3 point, HashSet<Collider> only, Transform ignore, out RaycastHit best, Transform ignoreToo = null)
         {
             best = default;
             var found = false;
@@ -516,6 +529,7 @@ namespace Scenario.Editor
             {
                 if (only != null && !only.Contains(hit.collider)) continue;
                 if (ignore != null && hit.transform.IsChildOf(ignore)) continue;
+                if (ignoreToo != null && hit.transform.IsChildOf(ignoreToo)) continue;
                 if (hit.collider.GetComponentInParent<Scenario.ScenarioPlayer>() != null) continue;
                 if (!found || hit.point.y > best.point.y)
                 {
@@ -524,6 +538,511 @@ namespace Scenario.Editor
                 }
             }
             return found;
+        }
+
+        // --- Measure -------------------------------------------------------------------------
+
+        public struct Sample
+        {
+            public Vector2 At;
+            public bool Found;
+            public float Height, Slope;
+            public GameObject Surface;
+        }
+
+        /// <summary>The ground at each [x, z]: height, slope in degrees and the object hit. Changes nothing.</summary>
+        public static List<Sample> Measure(IEnumerable<Vector2> points, GameObject on = null)
+        {
+            Physics.SyncTransforms();
+            var colliders = on != null ? new HashSet<Collider>(on.GetComponentsInChildren<Collider>()) : null;
+            var samples = new List<Sample>();
+            foreach (var at in points)
+            {
+                var sample = new Sample { At = at };
+                if (GroundHit(new Vector3(at.x, 0, at.y), colliders, null, out var hit))
+                {
+                    sample.Found = true;
+                    sample.Height = hit.point.y;
+                    sample.Slope = Vector3.Angle(hit.normal, Vector3.up);
+                    sample.Surface = hit.collider.gameObject;
+                }
+                samples.Add(sample);
+            }
+            return samples;
+        }
+
+        // --- Walkable props ------------------------------------------------------------------
+
+        public sealed class WalkableSpec
+        {
+            public string Target = "";
+            /// <summary>Ends of the walking line [x, z]; default the object's long axis.</summary>
+            public Vector2? From, To;
+            /// <summary>Walking width in meters; 0 measures the deck.</summary>
+            public float Width;
+            public bool Rails = true;
+            public float RailHeight = 1.1f;
+            /// <summary>Slopes from each end to the ground beyond it, when that ground is within 1.5 m up or down.</summary>
+            public bool Ramps = true;
+            /// <summary>Keeps the object's own colliders on. By default they are turned off so their bumps and holes do not trip the player.</summary>
+            public bool KeepColliders;
+        }
+
+        public sealed class WalkableResult
+        {
+            public GameObject Walkway;
+            public Vector3 Start, End;
+            public float Length, Width;
+            public int Segments, Holes, Bumps, CollidersOff;
+            public float StartGround = float.NaN, EndGround = float.NaN;
+            public bool StartRamp, EndRamp;
+            public List<string> Notes = new List<string>();
+        }
+
+        const float WalkStep = 0.5f, DeckThickness = 0.3f, RailThickness = 0.15f;
+
+        /// <summary>
+        /// Lays invisible colliders on a model's walking surface (a generated bridge, ramp, stairs or platform):
+        /// the deck is measured along its length, holes are bridged and bumps smoothed, rails keep the player on
+        /// it, and short ramps join each end to the ground beyond. Running it again replaces the walkway.
+        /// </summary>
+        public static WalkableResult MakeWalkable(WalkableSpec spec)
+        {
+            var target = Placer.FindByPath(spec.Target);
+            if (target == null) throw new ArgumentException($"No object at \"{spec.Target}\".");
+            var result = new WalkableResult();
+            // A walkway from an earlier run would be measured as deck.
+            var old = FindWalkway(target);
+            if (old != null) Undo.DestroyObjectImmediate(old);
+
+            GameObject walkway;
+            var temporary = new List<Collider>();
+            try
+            {
+                foreach (var filter in target.GetComponentsInChildren<MeshFilter>())
+                {
+                    if (filter.sharedMesh == null || filter.GetComponents<Collider>().Any(c => c.enabled)) continue;
+                    var collider = filter.gameObject.AddComponent<MeshCollider>();
+                    collider.sharedMesh = filter.sharedMesh;
+                    temporary.Add(collider);
+                }
+                Physics.SyncTransforms();
+                var deck = new HashSet<Collider>(target.GetComponentsInChildren<Collider>().Where(c => c.enabled));
+                if (deck.Count == 0) throw new ArgumentException($"{target.name} has no mesh to walk on.");
+                var bounds = BoundsOf(target);
+                var top = bounds.max.y + 5f;
+
+                var axis = LongAxis(target);
+                var a = spec.From ?? axis.a;
+                var b = spec.To ?? axis.b;
+                var length = Vector2.Distance(a, b);
+                if (length < 0.5f) throw new ArgumentException("The walking line is shorter than half a meter: give from and to.");
+                var dir = (b - a) / length;
+                var right = new Vector2(dir.y, -dir.x);
+
+                // The highest upward-facing surface of the object at a point, or NaN.
+                float DeckAt(Vector2 p)
+                {
+                    var best = float.NaN;
+                    foreach (var hit in Physics.RaycastAll(new Vector3(p.x, top, p.y), Vector3.down, top - bounds.min.y + 10f, ~0, QueryTriggerInteraction.Ignore))
+                        if (deck.Contains(hit.collider) && hit.normal.y > 0.5f && (float.IsNaN(best) || hit.point.y > best)) best = hit.point.y;
+                    return best;
+                }
+
+                // Width: the run of deck around the line at a quarter, half and three quarters of the way.
+                var width = spec.Width;
+                if (width <= 0)
+                {
+                    var spans = new List<float>();
+                    foreach (var t in new[] { 0.25f, 0.5f, 0.75f })
+                    {
+                        var center = Vector2.Lerp(a, b, t);
+                        var level = DeckAt(center);
+                        if (float.IsNaN(level)) continue;
+                        float Reach(float sign)
+                        {
+                            var reach = 0f;
+                            for (var o = 0.1f; o <= axis.width; o += 0.1f)
+                            {
+                                var h = DeckAt(center + right * (sign * o));
+                                if (float.IsNaN(h) || Mathf.Abs(h - level) > 0.25f) break;
+                                reach = o;
+                            }
+                            return reach;
+                        }
+                        spans.Add(Reach(1) + Reach(-1));
+                    }
+                    var measured = spans.Count > 0 ? spans.OrderBy(w => w).ElementAt(spans.Count / 2) : axis.width;
+                    if (spans.Count == 0) result.Notes.Add("No deck found across the middle: the width is the model's. Give width if it is wrong.");
+                    width = Mathf.Max(0.8f, spec.Rails ? measured * 0.85f : measured);
+                }
+
+                // The deck's height every half meter, in the middle and a quarter of the width to each side.
+                var count = Mathf.Max(2, Mathf.CeilToInt(length / WalkStep) + 1);
+                var at = new float[count];
+                var raw = new float[count];
+                for (var i = 0; i < count; i++)
+                {
+                    at[i] = Mathf.Min(length, i * WalkStep);
+                    var p = a + dir * at[i];
+                    var lanes = new[] { -0.25f, 0f, 0.25f }.Select(l => DeckAt(p + right * (width * l))).Where(h => !float.IsNaN(h)).OrderBy(h => h).ToList();
+                    raw[i] = lanes.Count > 0 ? lanes[lanes.Count / 2] : float.NaN;
+                }
+                var first = Array.FindIndex(raw, h => !float.IsNaN(h));
+                var last = Array.FindLastIndex(raw, h => !float.IsNaN(h));
+                if (first < 0 || last - first < 1)
+                    throw new ArgumentException($"No walking surface found on {target.name} along its length: give from and to across its deck.");
+
+                // A spike well off its neighbors (a post, a lantern) is not deck.
+                var heights = (float[])raw.Clone();
+                var off = new bool[count];
+                for (var i = first + 1; i < last; i++)
+                {
+                    if (float.IsNaN(raw[i])) continue;
+                    var near = Enumerable.Range(Math.Max(first, i - 3), Math.Min(last, i + 3) - Math.Max(first, i - 3) + 1)
+                        .Where(j => j != i && !float.IsNaN(raw[j])).Select(j => raw[j]).OrderBy(h => h).ToList();
+                    if (near.Count < 2 || Mathf.Abs(raw[i] - near[near.Count / 2]) <= 0.6f) continue;
+                    heights[i] = float.NaN;
+                    off[i] = true;
+                }
+                // Holes are bridged in a straight line.
+                for (var i = first; i <= last; i++)
+                {
+                    if (!float.IsNaN(heights[i])) continue;
+                    var before = i - 1;
+                    var after = i;
+                    while (after <= last && float.IsNaN(heights[after])) after++;
+                    if (after > last) after = before;
+                    for (var j = i; j < after; j++)
+                    {
+                        heights[j] = after == before ? heights[before] : Mathf.Lerp(heights[before], heights[after], (at[j] - at[before]) / (at[after] - at[before]));
+                        if (float.IsNaN(raw[j]) && (j == i || !float.IsNaN(raw[j - 1]))) result.Holes++;
+                    }
+                    i = after;
+                }
+                // Bumps are smoothed over two meters.
+                var smooth = new float[count];
+                for (var i = first; i <= last; i++)
+                {
+                    var from = Math.Max(first, i - 2);
+                    var to = Math.Min(last, i + 2);
+                    var sum = 0f;
+                    for (var j = from; j <= to; j++) sum += heights[j];
+                    smooth[i] = sum / (to - from + 1);
+                    if (!float.IsNaN(raw[i]) && Mathf.Abs(smooth[i] - raw[i]) > 0.1f) off[i] = true;
+                }
+                for (var i = first; i <= last; i++)
+                    if (off[i] && (i == first || !off[i - 1])) result.Bumps++;
+
+                Vector3 Point(int i) => new Vector3((a + dir * at[i]).x, smooth[i] + 0.03f, (a + dir * at[i]).y);
+
+                // Under a uniformly scaled object the walkway is its child and moves with it; otherwise a sibling.
+                var scale = target.transform.lossyScale;
+                var uniform = scale.x > 0 && Mathf.Abs(scale.y - scale.x) <= 0.01f * scale.x && Mathf.Abs(scale.z - scale.x) <= 0.01f * scale.x;
+                walkway = new GameObject(uniform ? "Walkway" : target.name + " Walkway");
+                Undo.RegisterCreatedObjectUndo(walkway, "Make walkable");
+                walkway.transform.SetParent(uniform ? target.transform : target.transform.parent, true);
+                if (!uniform) walkway.transform.SetSiblingIndex(target.transform.GetSiblingIndex() + 1);
+                result.Walkway = walkway;
+
+                GameObject Segment(string name, Vector3 from, Vector3 to, bool rails)
+                {
+                    var go = new GameObject(name);
+                    Undo.RegisterCreatedObjectUndo(go, "Make walkable");
+                    go.transform.SetPositionAndRotation((from + to) / 2, Quaternion.LookRotation(to - from, Vector3.up));
+                    go.transform.SetParent(walkway.transform, true);
+                    var span = Vector3.Distance(from, to) + 0.1f;
+                    var floor = go.AddComponent<BoxCollider>();
+                    floor.center = new Vector3(0, -DeckThickness / 2, 0);
+                    floor.size = new Vector3(width, DeckThickness, span);
+                    if (rails)
+                        foreach (var side in new[] { -1f, 1f })
+                        {
+                            var rail = go.AddComponent<BoxCollider>();
+                            rail.center = new Vector3(side * (width + RailThickness) / 2, spec.RailHeight / 2, 0);
+                            rail.size = new Vector3(RailThickness, spec.RailHeight, span);
+                        }
+                    return go;
+                }
+
+                var stops = new List<int>();
+                for (var i = first; i < last; i += 2) stops.Add(i);
+                stops.Add(last);
+                for (var k = 0; k + 1 < stops.Count; k++) Segment("Deck " + (k + 1), Point(stops[k]), Point(stops[k + 1]), spec.Rails);
+                result.Segments = stops.Count - 1;
+                result.Start = Point(first);
+                result.End = Point(last);
+                result.Length = at[last] - at[first];
+                result.Width = width;
+
+                // Each end meets the ground beyond it with a short ramp when the ground is within reach.
+                (float ground, bool ramp) Join(Vector3 end, Vector2 outward, string label)
+                {
+                    var beyond = new Vector2(end.x, end.z) + outward * 1.5f;
+                    if (!GroundHit(new Vector3(beyond.x, 0, beyond.y), null, target.transform, out var hit, walkway.transform))
+                    {
+                        result.Notes.Add($"No ground beyond the {label} end.");
+                        return (float.NaN, false);
+                    }
+                    var gap = end.y - hit.point.y;
+                    if (Mathf.Abs(gap) < 0.05f) return (hit.point.y, false);
+                    if (!spec.Ramps || Mathf.Abs(gap) > 1.5f)
+                    {
+                        if (Mathf.Abs(gap) > 0.3f)
+                            result.Notes.Add($"The {label} end is {Mathf.Abs(gap):0.0} m {(gap > 0 ? "above" : "below")} the ground beyond it: move or resize the object, or level the ground there (terrain_create flat_areas).");
+                        return (hit.point.y, false);
+                    }
+                    var run = Mathf.Clamp(Mathf.Abs(gap) / Mathf.Tan(25f * Mathf.Deg2Rad), 1.5f, 4f);
+                    var foot = new Vector2(end.x, end.z) + outward * run;
+                    var footHeight = GroundHit(new Vector3(foot.x, 0, foot.y), null, target.transform, out var footHit, walkway.transform) ? footHit.point.y : hit.point.y;
+                    Segment(label == "start" ? "Ramp at start" : "Ramp at end", end, new Vector3(foot.x, footHeight - 0.05f, foot.y), false);
+                    return (hit.point.y, true);
+                }
+                (result.StartGround, result.StartRamp) = Join(result.Start, -dir, "start");
+                (result.EndGround, result.EndRamp) = Join(result.End, dir, "end");
+            }
+            finally
+            {
+                foreach (var collider in temporary) Object.DestroyImmediate(collider);
+            }
+
+            if (!spec.KeepColliders)
+                foreach (var collider in target.GetComponentsInChildren<Collider>().Where(c => c.enabled && !c.transform.IsChildOf(walkway.transform)))
+                {
+                    Undo.RecordObject(collider, "Make walkable");
+                    collider.enabled = false;
+                    result.CollidersOff++;
+                }
+            Physics.SyncTransforms();
+            return result;
+        }
+
+        static GameObject FindWalkway(GameObject target)
+        {
+            var child = target.transform.Find("Walkway");
+            if (child != null) return child.gameObject;
+            var name = target.name + " Walkway";
+            var siblings = target.transform.parent != null
+                ? target.transform.parent.Cast<Transform>()
+                : target.scene.GetRootGameObjects().Select(g => g.transform);
+            return siblings.FirstOrDefault(t => t.name == name)?.gameObject;
+        }
+
+        /// <summary>The object's long horizontal axis (its local x or z): both ends at the middle of its width, and that width.</summary>
+        static (Vector2 a, Vector2 b, float width) LongAxis(GameObject go)
+        {
+            var points = new List<Vector2>();
+            foreach (var filter in go.GetComponentsInChildren<MeshFilter>())
+            {
+                var mesh = filter.sharedMesh;
+                if (mesh == null) continue;
+                var matrix = filter.transform.localToWorldMatrix;
+                if (mesh.isReadable)
+                {
+                    var vertices = mesh.vertices;
+                    var stride = Math.Max(1, vertices.Length / 20000);
+                    for (var i = 0; i < vertices.Length; i += stride)
+                    {
+                        var p = matrix.MultiplyPoint3x4(vertices[i]);
+                        points.Add(new Vector2(p.x, p.z));
+                    }
+                }
+                else
+                {
+                    var box = mesh.bounds;
+                    for (var corner = 0; corner < 8; corner++)
+                    {
+                        var p = matrix.MultiplyPoint3x4(new Vector3(
+                            (corner & 1) == 0 ? box.min.x : box.max.x, (corner & 2) == 0 ? box.min.y : box.max.y, (corner & 4) == 0 ? box.min.z : box.max.z));
+                        points.Add(new Vector2(p.x, p.z));
+                    }
+                }
+            }
+            if (points.Count == 0)
+            {
+                var bounds = BoundsOf(go);
+                points.Add(new Vector2(bounds.min.x, bounds.min.z));
+                points.Add(new Vector2(bounds.max.x, bounds.max.z));
+            }
+            var best = (a: Vector2.zero, b: Vector2.zero, width: 0f, length: -1f);
+            foreach (var axis in new[] { go.transform.right, go.transform.forward })
+            {
+                var d = new Vector2(axis.x, axis.z);
+                if (d.sqrMagnitude < 1e-6f) continue;
+                d.Normalize();
+                var n = new Vector2(-d.y, d.x);
+                float min = float.MaxValue, max = float.MinValue, nMin = float.MaxValue, nMax = float.MinValue;
+                foreach (var p in points)
+                {
+                    var s = Vector2.Dot(p, d);
+                    var t = Vector2.Dot(p, n);
+                    min = Mathf.Min(min, s);
+                    max = Mathf.Max(max, s);
+                    nMin = Mathf.Min(nMin, t);
+                    nMax = Mathf.Max(nMax, t);
+                }
+                if (max - min <= best.length) continue;
+                var mid = (nMin + nMax) / 2;
+                best = (d * min + n * mid, d * max + n * mid, nMax - nMin, max - min);
+            }
+            return (best.a, best.b, best.width);
+        }
+
+        // --- Along a path ---------------------------------------------------------------------
+
+        public sealed class AlongSpec
+        {
+            /// <summary>A prefab or model asset path, or a scene object to copy.</summary>
+            public string Source = "";
+            /// <summary>Path points [x, z] in walking order.</summary>
+            public List<Vector2> Path = new List<Vector2>();
+            public float Spacing = 6f;
+            /// <summary>Meters from the path line; 0 puts copies on it.</summary>
+            public float Offset = 2f;
+            /// <summary>right, left, both or alternate, seen walking along the path.</summary>
+            public string Side = "alternate";
+            /// <summary>Meters along the path before the first copy.</summary>
+            public float Start;
+            /// <summary>Height of each copy in meters; 0 keeps the source's size.</summary>
+            public float Height;
+            /// <summary>path (front turned to the path), along (front in the walking direction), random or keep.</summary>
+            public string Face = "path";
+            /// <summary>Ground object: only hits on its colliders count. Empty: any collider.</summary>
+            public string On = "";
+            public string Collider = "mesh";
+            public float MaxSlope = 40f;
+            /// <summary>Most meters each copy moves off its spot at random.</summary>
+            public float Jitter;
+            public int Seed = 1;
+            public string Group = "";
+            /// <summary>A point light on each copy, when set.</summary>
+            public PointLight Light;
+        }
+
+        public sealed class PointLight
+        {
+            public Color Color = new Color(1f, 0.72f, 0.42f);
+            public float Intensity = 2f, Range = 8f;
+            /// <summary>Height of the light as a share of the copy's height.</summary>
+            public float At = 0.75f;
+        }
+
+        public sealed class AlongResult
+        {
+            public GameObject Group;
+            public int Placed, SkippedNoGround, SkippedSlope;
+            public float PathLength;
+            public List<Vector3> Positions = new List<Vector3>();
+        }
+
+        /// <summary>Copies of a model at even spacing along a path, beside it or on it, sitting on the ground and facing the path.</summary>
+        public static AlongResult PlaceAlong(AlongSpec spec)
+        {
+            if (spec.Path.Count < 2) throw new ArgumentException("path needs at least two points [x, z].");
+            if (spec.Spacing < 0.1f) throw new ArgumentException("spacing must be at least 0.1 m.");
+            var template = Template(spec.Source, out var owned);
+            try
+            {
+                var result = new AlongResult();
+                var group = new GameObject(spec.Group.Length > 0 ? spec.Group : template.name + " (along path)");
+                Undo.RegisterCreatedObjectUndo(group, "Place along");
+                result.Group = group;
+                var ground = spec.On.Length > 0 ? Placer.FindByPath(spec.On) : null;
+                if (spec.On.Length > 0 && ground == null) throw new ArgumentException($"No object at \"{spec.On}\".");
+                var groundColliders = ground != null ? new HashSet<Collider>(ground.GetComponentsInChildren<Collider>()) : null;
+                Physics.SyncTransforms();
+
+                var random = new System.Random(spec.Seed);
+                var baseBounds = BoundsOf(template);
+                var factor = spec.Height > 0 && baseBounds.size.y > 0 ? spec.Height / baseBounds.size.y : 1f;
+                var copyHeight = baseBounds.size.y * factor;
+                var lengths = new List<float> { 0 };
+                for (var i = 1; i < spec.Path.Count; i++) lengths.Add(lengths[i - 1] + Vector2.Distance(spec.Path[i - 1], spec.Path[i]));
+                result.PathLength = lengths[lengths.Count - 1];
+
+                var station = 0;
+                for (var d = Mathf.Max(0, spec.Start); d <= result.PathLength + 0.001f; d += spec.Spacing, station++)
+                {
+                    var segment = 1;
+                    while (segment < lengths.Count - 1 && lengths[segment] < d) segment++;
+                    var span = lengths[segment] - lengths[segment - 1];
+                    var tangent = span > 0 ? (spec.Path[segment] - spec.Path[segment - 1]) / span : Vector2.up;
+                    var point = span > 0 ? Vector2.Lerp(spec.Path[segment - 1], spec.Path[segment], (d - lengths[segment - 1]) / span) : spec.Path[segment - 1];
+                    var right = new Vector2(tangent.y, -tangent.x);
+                    foreach (var side in spec.Offset > 0 ? Sides(spec.Side, station) : new[] { 0f })
+                    {
+                        var spot = point + right * (side * spec.Offset);
+                        if (spec.Jitter > 0) spot += new Vector2((float)random.NextDouble() - 0.5f, (float)random.NextDouble() - 0.5f) * (2 * spec.Jitter);
+                        if (!GroundHit(new Vector3(spot.x, 0, spot.y), groundColliders, group.transform, out var hit, owned ? null : template.transform))
+                        {
+                            result.SkippedNoGround++;
+                            continue;
+                        }
+                        if (Vector3.Angle(hit.normal, Vector3.up) > spec.MaxSlope)
+                        {
+                            result.SkippedSlope++;
+                            continue;
+                        }
+                        Vector2 front;
+                        switch (spec.Face)
+                        {
+                            case "along": front = tangent; break;
+                            case "keep": front = Vector2.zero; break;
+                            case "random":
+                                var turn = (float)random.NextDouble() * Mathf.PI * 2;
+                                front = new Vector2(Mathf.Sin(turn), Mathf.Cos(turn));
+                                break;
+                            default: front = side == 0 ? tangent : point - spot; break;
+                        }
+                        var yaw = front.sqrMagnitude > 1e-6f ? Mathf.Atan2(front.x, front.y) * Mathf.Rad2Deg : template.transform.eulerAngles.y;
+
+                        var copy = Instance(spec.Source, template);
+                        Undo.RegisterCreatedObjectUndo(copy, "Place along");
+                        copy.name = template.name + " " + (result.Placed + 1);
+                        copy.transform.SetParent(group.transform, true);
+                        copy.transform.rotation = Quaternion.Euler(0, yaw, 0) * Quaternion.Euler(template.transform.eulerAngles.x, 0, template.transform.eulerAngles.z);
+                        copy.transform.localScale = template.transform.lossyScale * factor;
+                        SitOn(copy, hit.point, 0.02f * copyHeight);
+                        AddColliders(copy, spec.Collider);
+                        if (spec.Light != null) AddLight(copy, spec.Light, copyHeight);
+                        result.Positions.Add(copy.transform.position);
+                        result.Placed++;
+                    }
+                }
+                Physics.SyncTransforms();
+                return result;
+            }
+            finally
+            {
+                if (owned) Object.DestroyImmediate(template);
+            }
+        }
+
+        static float[] Sides(string side, int station)
+        {
+            switch (side)
+            {
+                case "right": return new[] { 1f };
+                case "left": return new[] { -1f };
+                case "both": return new[] { 1f, -1f };
+                case "alternate": return new[] { station % 2 == 0 ? 1f : -1f };
+                default: throw new ArgumentException("side is right, left, both or alternate.");
+            }
+        }
+
+        static void AddLight(GameObject copy, PointLight spec, float height)
+        {
+            var go = new GameObject("Light");
+            Undo.RegisterCreatedObjectUndo(go, "Place along");
+            go.transform.SetParent(copy.transform, false);
+            var bounds = BoundsOf(copy);
+            go.transform.position = new Vector3(bounds.center.x, bounds.min.y + height * spec.At, bounds.center.z);
+            var light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = spec.Color;
+            light.intensity = spec.Intensity;
+            light.range = spec.Range;
+            light.shadows = LightShadows.None;
         }
 
         // --- Files -----------------------------------------------------------------------

@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -166,6 +167,22 @@ namespace Scenario.Editor.Tests
             Assert.AreEqual(1, _server.Count("model_run"), "only the free price check");
             Assert.AreEqual(true, (bool)_server.ToolArguments[_server.ToolCalls.IndexOf("model_run")]["dry_run"]);
             Assert.AreEqual(0, _s.Ledger.Jobs.Count);
+        }
+
+        [Test]
+        public void ModelsFind_Newest_PutsTheLatestModelsFirst()
+        {
+            Assert.IsTrue(Run.Sync(_s.SignInWithApiKey("key_test", "secret_test")), _s.SignInError);
+            _s.Catalog.Models = new List<ModelInfo>
+            {
+                new ModelInfo { Id = "model_old", Name = "Old", CreatedAt = 1000, Tags = new List<string> { "sc:featured" } },
+                new ModelInfo { Id = "model_new", Name = "New", CreatedAt = 3000 },
+                new ModelInfo { Id = "model_mid", Name = "Mid", CreatedAt = 2000 },
+            };
+            _s.Catalog.FetchedAt = Json.Now();
+            string[] Ids(JObject result) => JObject.Parse(TextOf(result))["models"].Select(m => (string)m["id"]).ToArray();
+            Assert.AreEqual("model_old", Ids(CallTool("models_find", null))[0], "relevance puts the featured model first");
+            CollectionAssert.AreEqual(new[] { "model_new", "model_mid", "model_old" }, Ids(CallTool("models_find", new JObject { ["sort"] = "newest" })));
         }
 
         [Test]
