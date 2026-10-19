@@ -125,6 +125,28 @@ namespace Scenario.Editor.UI
             agentText.style.flexShrink = 1;
             agentText.style.marginRight = 8;
             _content.Add(Ui.Row(agentText, Ui.Button("Open Agent", () => Window.Show("agent"), null, "sc-btn-sm")));
+            var claudePath = new TextField("Claude Code path") { value = user.ClaudeCodePath, isDelayed = true, name = "claude-path" };
+            claudePath.textEdition.placeholder = "Empty: found automatically";
+            claudePath.tooltip = "The claude command Ask runs. Leave empty to find it on PATH and in the usual install folders.";
+            claudePath.style.marginTop = 6;
+            var claudeFound = Ui.Text("", "sc-faint", "sc-small", "sc-wrap");
+            claudeFound.name = "claude-found";
+            void ShowClaude()
+            {
+                var found = Agent.ClaudeCode.Find();
+                claudeFound.text = found != null ? "Ask runs " + found
+                    : user.ClaudeCodePath.Length > 0 ? "Nothing at this path. Clear it to find claude automatically."
+                    : "Claude Code not found. " + Agent.ClaudeCode.InstallHint;
+            }
+            claudePath.RegisterValueChangedCallback(e =>
+            {
+                user.ClaudeCodePath = (e.newValue ?? "").Trim();
+                user.Save();
+                ShowClaude();
+            });
+            ShowClaude();
+            _content.Add(claudePath);
+            _content.Add(claudeFound);
 
             _content.Add(Ui.Section("Diagnostics"));
             _content.Add(Ui.Text("A free check of sign-in, project access, the model catalog and one price check. Nothing is generated.", "sc-dim", "sc-small", "sc-wrap"));

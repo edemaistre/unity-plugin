@@ -12,6 +12,8 @@ The window docks anywhere and works from 320 px wide. Above 560 px the navigatio
 
 Keyboard: Ctrl+K (Cmd+K on macOS) opens the command palette; Ctrl+Enter (Cmd+Enter) generates from the prompt box; Esc closes an overlay.
 
+The command palette lists every action, model, recent job, and the steps and scene actions for the selection (the same as the Scene view panel, section 4). Type a sentence and pick **Ask Claude: …** to send it to Claude Code (section 9). With a 3D object selected, type a number ("height 2.5") for **Set its height to 2.5 m**.
+
 ## 2. Sign in
 
 **Sign in with Scenario** opens your browser on Scenario's sign-in page. Approve, go back to Unity, then pick a team and a project in the window. Everything you generate is billed to that project. Switch it later from the header.
@@ -87,7 +89,30 @@ Steps turn an asset into the next one. They open Create with the right model and
 
 The 3D steps are grouped in the **Next** menu (Texture, Shape, Rig and animate, Parts and style). Each step shows a one-line hint under the model card, for example the input size a model accepts.
 
-Where to find them: the result card's **Next**, a right-click in the Project window (**Scenario > Next Step…**), the **Next** button in the Inspector header of a generated asset, and the Library.
+Where to find them: the Scenario panel in the Scene view (below), the result card's **Next**, a right-click in the Project window or the Hierarchy (**Scenario > Next Step…**), the **Next** button in the Inspector header of a generated asset, the command palette and the Library.
+
+### The Scenario panel in the Scene view
+
+The Scene view has a **Scenario** overlay, docked on the right at first. Drag it to dock it elsewhere or float it, collapse it to an icon, or show and hide it from the Scene view's Overlays menu. The command palette's **Show the Scenario panel in the Scene view** brings it back. It follows the selection:
+
+| Selected | The panel offers |
+|---|---|
+| A 3D object in the scene | Its steps, grouped as above (Texture, Shape, Rig and animate, Parts and style), then **Make playable**, **Put on the ground**, and **Height (m)** with **Set** |
+| A terrain | **Scatter here**: a prefab or model, a count, and the side of the area in meters |
+| An image, a texture or a sprite, in the Project window or the scene | The image steps |
+| A 3D model, video or sound asset, or an AudioSource or VideoPlayer with a clip | Its steps |
+| Nothing | **Generate**: Image, 3D model, Material, Skybox, Sound |
+
+Steps open Create with the model and the asset attached; nothing is sent until you press **Generate**, which shows the price. A placed Scenario model is sent as its Scenario asset, with no upload. Selecting a part of a placed model, or a mesh inside a character, stands for the whole model. Any other object is exported as GLB when a step needs it.
+
+Scene actions run at once, each one Undo step:
+
+- **Make playable** turns a rigged character with a walk into a third-person player: a CharacterController, an Animator Controller blending idle, walk and run, a jump, and a follow camera. Press Play, then WASD to move, Shift to run, Space to jump. When the character is not ready, one line says what is missing, for example "No skeleton: rig it first (Rig and animate)" or "No walk yet: animate it first".
+- **Put on the ground** sits the object on the collider below it.
+- **Set** scales the object evenly to the height you type, in meters. Its base stays where it was.
+- **Scatter** places copies around the Scene view's center (the terrain's center when you look elsewhere), sat on the ground, with colliders. Each run gives a new arrangement; one Undo removes it.
+
+The **Ask** field at the top of the panel sends a request to Claude Code (section 9).
 
 ## 5. Where results go
 
@@ -109,7 +134,7 @@ Each generated asset records its model, prompt, job, settings and cost in its `.
 Right-click entries:
 
 - Project window: **Scenario > Generate Here…** on a folder (results go there), **Next Step…**, **Use as Input**, **Copy Scenario Asset Id**; **Create > Scenario > Image, 3D Model, Material, Skybox, Sound, Video**.
-- Hierarchy: **Scenario > Generate Material for This, Generate Sprite for This, Generate Sound for This, Retexture, Use as Reference**.
+- Hierarchy: **Scenario > Next Step…** (the steps for the object: 3D steps for a model, image steps for a sprite), **Generate Material for This, Generate Sprite for This, Generate Sound for This, Retexture, Use as Reference**, and **Make Playable** on a rigged character with a walk.
 
 ## 6. Library
 
@@ -164,13 +189,26 @@ The agent can also build walkable worlds: a terrain from a generated heightmap w
 
 The agent sees the same catalog, prices and import rules as you. A skill file for agents ships with the package in `Documentation~/agent-skill/SKILL.md`.
 
+### Ask Claude from Unity
+
+Type a request in the **Ask** field, at the top of the Agent view or of the Scenario panel in the Scene view, and press Enter: "make the bridge rustier", "add 20 pines around the temple", "rig and animate the selected character". The plugin runs your own Claude Code on this project through the bridge:
+
+- It turns the bridge on if it is off, and says so.
+- The request goes with what is selected: hierarchy paths for scene objects, asset paths for assets.
+- Claude Code runs in print mode from a temporary folder, with only this editor's tools (no shell, no file edits), allowed without a prompt. Its MCP config, with the bridge token, is a file in your temporary folder, rewritten at each request.
+- Each tool call shows as one line (the tool and what it is about), then Claude's text and the result. **Stop** ends the request; calls already sent finish.
+- Paid calls follow the permissions above. A call above the limits waits for **Approve** or **Deny**, shown under the request in the panel and in the Agent view.
+- The log stays until you **Clear** it, across script reloads. A script reload stops a running request.
+
+Claude Code must be installed and signed in on this machine (`npm install -g @anthropic-ai/claude-code`, or the native installer from claude.com, then run `claude` once in a terminal to sign in). The plugin finds `claude` on your PATH and in the usual install folders (`~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin`, `/usr/local/bin`), and gives it those folders on its PATH, since editors started from the Dock or the Hub get a minimal one. To use another copy, set **Settings > Agent > Claude Code path**. Without Claude Code, every button in the panel and the window works as before.
+
 ## 10. Settings
 
 - **Output**: the root folder (inside Assets) and daily subfolders.
 - **Import**: images as sprites, sprite pixels per unit, image filter, colliders on placed 3D models.
 - **Placement**: frame placed objects in the Scene view.
 - **Spending**: ask before requests above N CU; turn spending off for this editor. `SCENARIO_NO_SPEND=1` in the environment does the same for every project.
-- **Agent**: a shortcut to the Agent view, where the port and permissions are.
+- **Agent**: a shortcut to the Agent view, where the port and permissions are, and **Claude Code path**, the `claude` command Ask runs (empty: found automatically; the line under it says which one is used).
 - **Diagnostics**: a free check of sign-in, project access, the model catalog and one price check. **Copy the report** for a support request.
 
 Project settings (output, import, placement, spending threshold) are saved in `ProjectSettings/` and shared with your team. Your account, workspace, favorites, spending switch and agent settings stay on your machine.
@@ -203,3 +241,6 @@ var result = await ScenarioApi.Generate("model_openai-gpt-image-2-5-flare", para
 - **The model did not land on my object**: the line above Generate says where results go. Select the object before generating, or use **Place** on the card afterwards.
 - **The agent cannot connect**: check that the Agent toggle is on and the dot is green, that the client uses the current token (after **Regenerate**, copy the setup again), and that the port is free (change it in Settings if another program uses it). The bridge restarts for a few seconds after each script compile.
 - **Nothing shows in the window after a compile**: close and reopen the window. Jobs and results are kept in the job list.
+- **Ask says Claude Code was not found**: install it, or set its path in **Settings > Agent**. "Not signed in": run `claude` once in a terminal and sign in.
+- **Ask says Claude could not reach the agent bridge**: check that the Agent toggle is on and that the port is free, then ask again.
+- **The Scenario panel is gone from the Scene view**: open the Scene view's Overlays menu and tick **Scenario**, or use **Show the Scenario panel in the Scene view** in the command palette.

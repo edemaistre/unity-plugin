@@ -56,6 +56,8 @@ namespace Scenario.Editor
         public int AgentAutoApproveCu = 80;
         public int AgentSessionBudgetCu = 1200;
         public bool AgentCanEditScene = true;
+        /// <summary>The claude command for Ask; empty finds it on PATH and in the usual install folders.</summary>
+        public string ClaudeCodePath = "";
 
         public string ModelFor(string outputType)
         {

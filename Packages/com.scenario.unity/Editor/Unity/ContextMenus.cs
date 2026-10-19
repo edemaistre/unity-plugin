@@ -9,7 +9,8 @@ namespace Scenario.Editor
 {
     /// <summary>
     /// Entry points outside the window: Project window and Hierarchy context menus,
-    /// and Assets > Create > Scenario. They all open Create ready to go; nothing is sent.
+    /// and Assets > Create > Scenario. Steps open Create ready to go (nothing is sent);
+    /// Make Playable changes the scene at once, in one Undo step.
     /// </summary>
     static class ContextMenus
     {
@@ -125,11 +126,29 @@ namespace Scenario.Editor
             window.Create.FocusPrompt();
         }
 
+        [MenuItem("GameObject/Scenario/Next Step…", false, 29)]
+        static void SceneNextStep()
+        {
+            var context = SceneActions.Current();
+            var menu = new GenericMenu();
+            CreateView.StepsMenu(menu, context.Kind, step => SceneActions.OpenStep(step, context));
+            menu.ShowAsContext();
+        }
+
+        [MenuItem("GameObject/Scenario/Next Step…", true)]
+        static bool SceneNextStepValid() => SceneObjectSelected() && SceneActions.Current().Steps.Any();
+
         [MenuItem("GameObject/Scenario/Retexture", false, 40)]
         static void Retexture()
         {
-            var go = Selection.activeGameObject;
-            ScenarioWindow.OpenView("create").Create.StartStep(OutputTypes.Step("retexture"), new SlotItem { Source = go, Kind = "3d", Label = go.name });
+            // A placed Scenario model is retextured from its own asset; anything else is exported as GLB.
+            var context = SceneActions.Current();
+            if (context.Mode == SelectionContext.Object3D) SceneActions.OpenStep(OutputTypes.Step("retexture"), context);
+            else
+            {
+                var go = Selection.activeGameObject;
+                ScenarioWindow.OpenView("create").Create.StartStep(OutputTypes.Step("retexture"), new SlotItem { Source = go, Kind = "3d", Label = go.name });
+            }
         }
 
         [MenuItem("GameObject/Scenario/Use as Reference", false, 41)]
@@ -137,6 +156,17 @@ namespace Scenario.Editor
         {
             ScenarioWindow.OpenView("create").Create.AttachObjects(new Object[] { Selection.activeGameObject });
         }
+
+        [MenuItem("GameObject/Scenario/Make Playable", false, 42)]
+        static void MakePlayable()
+        {
+            var outcome = SceneActions.MakePlayable(SceneActions.Current().Target);
+            SceneActions.Report(outcome);
+            if (outcome.Ok) Selection.activeGameObject = outcome.Object;
+        }
+
+        [MenuItem("GameObject/Scenario/Make Playable", true)]
+        static bool MakePlayableValid() => SceneObjectSelected() && SceneActions.Current().CanMakePlayable;
 
         [MenuItem("GameObject/Scenario/Generate Material for This", true)]
         [MenuItem("GameObject/Scenario/Generate Sprite for This", true)]
