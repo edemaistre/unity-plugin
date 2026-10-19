@@ -44,8 +44,11 @@ try:
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
         json.dump(config, f)
         cfg = f.name
+    # The agent gets the Unity bridge and nothing else: no shell or file tools (it would read the project
+    # instead of using the plugin), no user settings or hooks, and any other tool is refused, not asked.
     cmd = ["claude", "-p", prompt, "--append-system-prompt", system, "--mcp-config", cfg, "--strict-mcp-config",
-           "--model", model, "--allowedTools", "mcp__scenario-unity", "--output-format", "stream-json", "--verbose"]
+           "--tools", "ToolSearch", "--allowedTools", "mcp__scenario-unity", "--permission-mode", "dontAsk",
+           "--setting-sources", "local", "--model", model, "--output-format", "stream-json", "--verbose"]
     start = time.time()
     with open(out / "transcript.jsonl", "w") as raw, \
             subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=tempfile.gettempdir()) as run:

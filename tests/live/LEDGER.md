@@ -78,3 +78,31 @@ Prompt "runs forward fast, takes a big jump forward, lands and keeps running, th
 |---|---|---|---|---|
 | run-jump-cartwheel | `model_cartwheel-text-to-motion` | `job_DuuaeWtAYSk4heNqsEHxZYsF` | 120 | ok: 1 glb, 5.0 s clip |
 | run-jump-uthana | `model_uthana-text-to-motion-3.0` | `job_f1JaKpHTwrfZZ5mazpjdLbLr` | 228 | ok: 1 glb, 8.0 s clip |
+
+## 2026-10-19: film rehearsal 1 (agent bridge, test project)
+
+Claude Code (Opus) built a walkable world in a headless editor from the film prompt, through the agent bridge only (`tools/world_rehearsal.py`; session auto-approve raised for this run by `SCENARIO_E2E_*`). Every generation below was sent by the agent once. The six first Meshy jobs and the second temple came back to the agent as "The operation timed out." (the MCP client's 60 s limit on a tool call) but ran and imported; the agent found them with `jobs` and sent nothing twice. The first temple came out as a stilted wooden platform and was regenerated on purpose. Run log: `qa/unity-world/r1/` in the Engine Plugins folder.
+
+| Asset | Model | Job | Charged CU | Result |
+|---|---|---|---|---|
+| heightmap | `model_openai-gpt-image-2-5-flare` | `job_n6LhcwyrpcP7BDvUdTzHr7ug` | 12 | ok: terrain |
+| meadow material | `model_patina-material` | `job_ZPxu5qZFYWaGVf2mztqKP5hs` | 15 | ok: terrain layer |
+| rock material | `model_patina-material` | `job_WWh3SgknUE1oDxwvJkMKH8GS` | 15 | ok: terrain layer |
+| sky | `model_scenario-skybox-flux` | `job_7JY31UQNVoY1UC1y7D1kNXaq` | 14 | ok: skybox |
+| explorer | `model_meshy-7-1-txt23d` | `job_6ikKxSyisbquTGoJCK2M8HMG` | 120 | ok (client timeout) |
+| temple 1 | `model_meshy-7-1-txt23d` | `job_FjXo3eBBAjufq8gRNhiZAvwF` | 120 | ok (client timeout), not used |
+| pine | `model_meshy-7-1-txt23d` | `job_e6BNA8GRmL7my5MMQqWqHhQW` | 120 | ok (client timeout), 45 scattered |
+| boulder | `model_meshy-7-1-txt23d` | `job_zhNRks7FnBZwZgNm8UDRVjp3` | 120 | ok (client timeout), 30 scattered |
+| lantern | `model_meshy-7-1-txt23d` | `job_4tmwkXPhoERMC5g1aPUWfPYd` | 120 | ok (client timeout), 8 placed |
+| bridge | `model_meshy-7-1-txt23d` | `job_FCq657pNVWKRkPMkWv79f6AQ` | 120 | ok (client timeout) |
+| wind | `model_elevenlabs-sound-effects-v2` | `job_BFqwEP2nbfGkbkit3JPm7vzr` | 30 | ok |
+| birds | `model_elevenlabs-sound-effects-v2` | `job_WjKsur1TyzE2Rohj4dBjWWqB` | 30 | ok |
+| footstep | `model_mirelo-sfx-2-0-text-to-audio` | `job_b2WWPUyu5t5YDQDwC4hbNo9K` | 3 | ok |
+| score | `model_elevenlabs-music-v2-5` | `job_rShcybQGmNUpY6qU3HJa89aW` | 60 | ok, 90 s |
+| walk | `model_meshy-animation` | `job_hPs1tjwy1VEPtCj7Hbh4eB8w` | 32 | ok |
+| idle | `model_meshy-animation` | `job_sA13whTk3SqtL7iJNdUCjne8` | 32 | ok |
+| run | `model_meshy-animation` | `job_ry3QgziAcw8aWBTbpp6d6U3T` | 32 | ok |
+| jump | `model_meshy-animation` | `job_cFWqt2kMYgQXFUNZ6SbEThkv` | 32 | ok |
+| temple 2 | `model_meshy-7-1-txt23d` | `job_KsRLhQgqV1fA1CGYEUHaDgQa` | 120 | ok (client timeout) |
+
+Total 1,147 CU.
