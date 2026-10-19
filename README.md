@@ -5,7 +5,7 @@
 <p align="center">
   <!-- x-release-please-start-version -->
   <img alt="Version 0.1.0"
-    src="https://img.shields.io/badge/version-0.1.0-black">
+    src="https://img.shields.io/static/v1?label=version&message=0.1.0&color=black">
   <!-- x-release-please-end -->
   <img alt="Unity 6.0 and later" src="https://img.shields.io/badge/Unity-6.0%2B-black?logo=unity">
   <img alt="Render pipelines" src="https://img.shields.io/badge/pipelines-Built--in%20%C2%B7%20URP%20%C2%B7%20HDRP-555">
