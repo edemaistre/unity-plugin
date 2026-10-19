@@ -141,6 +141,9 @@ namespace Scenario.Editor.Tests
             _window.Create.SelectType(OutputTypes.Image, true);
             _window.Create.SetPrompt("A lantern on a mossy rock");
             yield return Frames(4);
+            var improve = Q<Button>("improve");
+            Assert.IsNotNull(improve);
+            Assert.AreEqual(DisplayStyle.Flex, improve.resolvedStyle.display, "Prompt Spark is offered for a model whose prompt field allows it");
 
             foreach (var id in new[] { "library", "jobs", "workflows", "agent", "settings", "create" })
             {

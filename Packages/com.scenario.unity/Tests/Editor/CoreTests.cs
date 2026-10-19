@@ -210,6 +210,23 @@ namespace Scenario.Editor.Tests
         }
 
         [Test]
+        public void PromptSpark_IsReadFromThePromptField_AsTheServerSendsIt()
+        {
+            // model_schema_get flags Spark on the field and in prompting.prompt_spark_fields, not at the top.
+            var schema = Fixtures.Structured("schema_flare.sse.txt");
+            Assert.IsNull(schema["prompt_spark"]);
+            Assert.IsTrue(SchemaForm.SparkAvailable(schema, SchemaForm.FieldsFromSchema(schema, OutputTypes.Restrict)));
+
+            var listedOnly = JObject.Parse(@"{""parameters"":[{""name"":""prompt"",""type"":""string"",""prompt"":true}],""prompting"":{""prompt_spark_fields"":[""prompt""]}}");
+            Assert.IsTrue(SchemaForm.SparkAvailable(listedOnly, SchemaForm.FieldsFromSchema(listedOnly)));
+
+            var none = JObject.Parse(@"{""parameters"":[{""name"":""prompt"",""type"":""string"",""prompt"":true}]}");
+            Assert.IsFalse(SchemaForm.SparkAvailable(none, SchemaForm.FieldsFromSchema(none)));
+            var noPrompt = JObject.Parse(@"{""prompt_spark"":true,""parameters"":[{""name"":""model"",""type"":""file"",""kind"":""3d""}]}");
+            Assert.IsFalse(SchemaForm.SparkAvailable(noPrompt, SchemaForm.FieldsFromSchema(noPrompt)), "nothing to rewrite");
+        }
+
+        [Test]
         public void PatinaSchemaHasItsFields()
         {
             var fields = SchemaForm.FieldsFromSchema(Fixtures.Structured("schema_patina.sse.txt"));

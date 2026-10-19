@@ -45,7 +45,7 @@ The model card shows the current model. Quick picks per type sit under it.
 
 ### Prompt and inputs
 
-Type a prompt. **Improve** runs Prompt Spark, which rewrites the prompt for the chosen model; it costs a few CU and shows its price first.
+Type a prompt. **Improve** (next to the Prompt label) runs Prompt Spark, which rewrites the prompt for the chosen model; the button shows its price first, and Undo on the notice brings your words back.
 
 Models that take files show one slot per input (reference images, a start frame, a 3D model, a video, a voice). Fill a slot by dragging from the Project window or the Hierarchy, or from its **+** menu: **Selection**, **Capture the Scene view**, **Capture the main camera**, **Browse files…** or **Scenario asset…**. Unity files are uploaded once when needed (uploads are free).
 

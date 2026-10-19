@@ -199,6 +199,19 @@ namespace Scenario.Editor.Core
         /// <summary>Name of the main prompt field ("prompt", "text", "texturePrompt"...), "" when the model takes no text.</summary>
         public static string PromptName(IEnumerable<Field> fields) => fields.FirstOrDefault(f => f.Type == FieldType.Prompt)?.Name ?? "";
 
+        /// <summary>
+        /// Whether Prompt Spark can rewrite this model's prompt. model_schema_get flags it on the prompt
+        /// field and lists it in prompting.prompt_spark_fields; a top-level prompt_spark is also accepted.
+        /// </summary>
+        public static bool SparkAvailable(JObject schema, IList<Field> fields)
+        {
+            if (schema == null || fields == null) return false;
+            var prompt = PromptName(fields);
+            if (prompt.Length == 0) return false;
+            if (Json.Truthy(schema["prompt_spark"]) || fields.Any(f => f.Name == prompt && f.PromptSpark)) return true;
+            return (schema["prompting"] as JObject)?["prompt_spark_fields"] is JArray listed && listed.Any(t => (string)t == prompt);
+        }
+
         /// <summary>The first file input that takes this kind of asset (image, video, audio, 3d).</summary>
         public static Field FileInputFor(IEnumerable<Field> fields, string kind)
         {
