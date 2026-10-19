@@ -337,6 +337,10 @@
     color: var(--sc-text-faint);
 }
 
+.sc-warning-text {
+    color: var(--sc-warning);
+}
+
 .sc-small {
     font-size: 11px;
 }
