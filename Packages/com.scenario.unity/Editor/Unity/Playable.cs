@@ -33,6 +33,8 @@ namespace Scenario.Editor
             /// <summary>Degrees the model turns inside the player, for models that face away from +Z.</summary>
             public float Turn;
             public bool RunByDefault;
+            /// <summary>An audio asset played at each step.</summary>
+            public string Footstep = "";
             public bool Camera = true;
             public string Folder = "";
         }
@@ -149,6 +151,11 @@ namespace Scenario.Editor
             component.runByDefault = spec.RunByDefault;
             component.jumpHeight = Mathf.Clamp(height * 0.6f, 0.6f, 2f);
             component.inPlaceBone = bone;
+            if (spec.Footstep.Length > 0)
+            {
+                component.footstep = AssetDatabase.LoadAssetAtPath<AudioClip>(spec.Footstep);
+                if (component.footstep == null) result.Notes.Add($"No audio clip at {spec.Footstep}: no footsteps.");
+            }
 
             var ground = World.HeightAt(player.transform.position + Vector3.up * 0.5f);
             if (!float.IsNaN(ground)) player.transform.position = new Vector3(feet.x, ground, feet.z);

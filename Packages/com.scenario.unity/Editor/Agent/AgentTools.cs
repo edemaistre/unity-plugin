@@ -437,7 +437,8 @@ namespace Scenario.Editor.Agent
                         ("height", Num("Character height in meters. Default: kept when 1.2 to 2.6 m, else 1.8 m.")),
                         ("walk_speed", Num("Meters per second; default from the walk clip.")), ("run_speed", Num("Meters per second; default from the run clip.")),
                         ("turn", Num("Degrees to turn the model if it faces away from its direction of travel (180 for a model facing -Z).")),
-                        ("run_by_default", Bool("Run unless Shift is held.")), ("camera", Bool("Set up the follow camera on the main camera, default true."))),
+                        ("run_by_default", Bool("Run unless Shift is held.")), ("camera", Bool("Set up the follow camera on the main camera, default true.")),
+                        ("footstep", Str("Audio asset path played at each step: ideally one short footstep; a longer recording is sliced."))),
                     Run = MakePlayable,
                 },
                 new Tool
@@ -1515,6 +1516,7 @@ namespace Scenario.Editor.Agent
                 RunSpeed = Math.Max(0, F_(args, "run_speed", 0)),
                 Turn = F_(args, "turn", 0),
                 RunByDefault = B_(args, "run_by_default", false),
+                Footstep = S_(args, "footstep"),
                 Camera = B_(args, "camera", true),
             });
             var data = new JObject

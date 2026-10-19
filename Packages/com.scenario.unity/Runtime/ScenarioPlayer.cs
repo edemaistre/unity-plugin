@@ -28,6 +28,8 @@ namespace Scenario
         [Tooltip("Bone kept over the character's feet, so clips that travel play in place (path under the Animator).")]
         public string inPlaceBone = "";
         [Tooltip("Below this height the character is put back at its start.")] public float fallLimit = -50f;
+        [Tooltip("Played at each step while moving on the ground: one footstep, or a longer recording sliced into steps.")] public AudioClip footstep;
+        [Range(0, 1)] public float footstepVolume = 0.6f;
 
         /// <summary>Set by an autopilot or a script: when true, the fields below replace the player's input.</summary>
         [NonSerialized] public bool external;
@@ -52,6 +54,9 @@ namespace Scenario
         float _vertical;
         Transform _bone;
         Vector3 _boneRest;
+        AudioSource _steps;
+        float _stepTimer;
+        float _stepStop;
 
         void Awake()
         {
@@ -66,6 +71,12 @@ namespace Scenario
                 if (_bone != null) _boneRest = animator.transform.InverseTransformPoint(_bone.position);
             }
             if (cameraTransform == null && Camera.main != null) cameraTransform = Camera.main.transform;
+            if (footstep != null)
+            {
+                _steps = gameObject.AddComponent<AudioSource>();
+                _steps.playOnAwake = false;
+                _steps.spatialBlend = 0.6f;
+            }
         }
 
         void Update()
@@ -103,11 +114,42 @@ namespace Scenario
                 animator.SetBool(GroundedId, _controller.isGrounded);
             }
 
+            if (_steps != null) Footsteps();
+
             if (transform.position.y < fallLimit)
             {
                 Falls++;
                 Respawn();
             }
+        }
+
+        void Footsteps()
+        {
+            if (_stepStop > 0 && Time.time >= _stepStop)
+            {
+                _steps.Stop();
+                _stepStop = 0;
+            }
+            if (!_controller.isGrounded || PlanarSpeed < 0.3f)
+            {
+                _stepTimer = 0.12f;
+                return;
+            }
+            _stepTimer -= Time.deltaTime;
+            if (_stepTimer > 0) return;
+            _stepTimer = Mathf.Lerp(0.55f, 0.32f, Mathf.InverseLerp(walkSpeed, runSpeed, PlanarSpeed));
+            _steps.pitch = UnityEngine.Random.Range(0.92f, 1.08f);
+            if (footstep.length <= 0.8f)
+            {
+                _steps.PlayOneShot(footstep, footstepVolume);
+                return;
+            }
+            // A recording of several steps: play a short slice of it.
+            _steps.clip = footstep;
+            _steps.volume = footstepVolume;
+            _steps.time = UnityEngine.Random.Range(0f, footstep.length - 0.3f);
+            _steps.Play();
+            _stepStop = Time.time + 0.28f;
         }
 
         void LateUpdate()
