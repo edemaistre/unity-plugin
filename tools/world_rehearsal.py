@@ -9,10 +9,14 @@ summary), captures/NN.png (the images the agent looked at), summary.txt. Writes 
 PAID: the agent generates with Scenario models on the signed-in project.
 
 python3 world_rehearsal.py <Library/ScenarioDevLogs/e2e> <out dir> <prompt file> [model]
+SCENARIO_REHEARSAL_SKILL=<path to SKILL.md> adds the agent skill to the system prompt, as a user who
+installed it would have it.
 """
 import base64
 import json
+import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,10 +27,12 @@ model = sys.argv[4] if len(sys.argv) > 4 else "opus"
 (out / "captures").mkdir(parents=True, exist_ok=True)
 endpoint = e2e / "agent-endpoint.json"
 t0 = time.time()
-while not endpoint.exists() and time.time() - t0 < 600:
+# The editor starts just before this script: an endpoint file older than that is from an earlier run.
+while not (endpoint.exists() and endpoint.stat().st_mtime > t0 - 60) and time.time() - t0 < 600:
     time.sleep(1)
 info = json.loads(endpoint.read_text())
 if not info.get("running"):
+    (e2e / "agent-stop").write_text("stop")
     sys.exit("bridge not running: " + info.get("error", ""))
 
 prompt = prompt_file.read_text().strip()
@@ -37,6 +43,10 @@ Size every model in meters and put it on the ground; look at your work with capt
 Make the character playable, playtest it with play (action walk) along a route that crosses the world, fix what fails, then stop Play mode. \
 Save the scene with scene_save. The user approved spending on this build: generate what the world needs, one generation per asset unless a result is unusable. \
 Finish with a short summary of what you built and how to play it."""
+skill_path = os.environ.get("SCENARIO_REHEARSAL_SKILL", "")
+if skill_path:
+    skill = re.sub(r"\A---\n.*?\n---\n", "", pathlib.Path(skill_path).read_text(), flags=re.S).strip()
+    system += "\n\nThe Scenario for Unity skill, installed by the user:\n\n" + skill
 
 config = {"mcpServers": {"scenario-unity": {"type": "http", "url": info["url"], "headers": {"Authorization": info["authorization"]}}}}
 timeline, calls, captures, result = [], {}, 0, ""
