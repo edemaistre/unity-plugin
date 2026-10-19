@@ -97,11 +97,11 @@ The Scene view has a **Scenario** overlay, docked on the right at first. Drag it
 
 | Selected | The panel offers |
 |---|---|
-| A 3D object in the scene | Its steps, grouped as above (Texture, Shape, Rig and animate, Parts and style), then **Make playable**, **Put on the ground**, and **Height (m)** with **Set** |
-| A terrain | **Scatter here**: a prefab or model, a count, and the side of the area in meters |
+| A 3D object in the scene | Its steps, grouped as above (Texture, Shape, Rig and animate, Parts and style), then **Make playable**, **Put on the ground**, **Height (m)** with **Set**, and **Make walkable** |
+| A terrain | **Scatter here**: a prefab or model, a count, and the side of the area in meters; **Light and mood** |
 | An image, a texture or a sprite, in the Project window or the scene | The image steps |
 | A 3D model, video or sound asset, or an AudioSource or VideoPlayer with a clip | Its steps |
-| Nothing | **Generate**: Image, 3D model, Material, Skybox, Sound |
+| Nothing | **Generate**: Image, 3D model, Material, Skybox, Sound; **Light and mood** |
 
 Steps open Create with the model and the asset attached; nothing is sent until you press **Generate**, which shows the price. A placed Scenario model is sent as its Scenario asset, with no upload. Selecting a part of a placed model, or a mesh inside a character, stands for the whole model. Any other object is exported as GLB when a step needs it.
 
@@ -110,6 +110,8 @@ Scene actions run at once, each one Undo step:
 - **Make playable** turns a rigged character with a walk into a third-person player: a CharacterController, an Animator Controller blending idle, walk and run, a jump, and a follow camera. Press Play, then WASD to move, Shift to run, Space to jump. When the character is not ready, one line says what is missing, for example "No skeleton: rig it first (Rig and animate)" or "No walk yet: animate it first".
 - **Put on the ground** sits the object on the collider below it.
 - **Set** scales the object evenly to the height you type, in meters. Its base stays where it was.
+- **Make walkable** is for a bridge, stairs or a platform: an invisible walkway on its deck (holes filled, bumps smoothed), side rails, and short ramps to the ground beyond each end. The model's own colliders are turned off so their bumps cannot trip the player. Run it again after moving the object.
+- **Light and mood** applies a preset to the open scene (Golden hour, Midday, Overcast, Misty morning, Sunset, Night): the sun's angle, color and strength, fog, ambient light and, in URP, a post-processing volume (tone mapping, exposure, contrast, saturation, warmth, bloom, vignette). The command palette lists the presets too.
 - **Scatter** places copies around the Scene view's center (the terrain's center when you look elsewhere), sat on the ground, with colliders. Each run gives a new arrangement; one Undo removes it.
 
 The **Ask** field at the top of the panel sends a request to Claude Code (section 9).
@@ -134,7 +136,7 @@ Each generated asset records its model, prompt, job, settings and cost in its `.
 Right-click entries:
 
 - Project window: **Scenario > Generate Here…** on a folder (results go there), **Next Step…**, **Use as Input**, **Copy Scenario Asset Id**; **Create > Scenario > Image, 3D Model, Material, Skybox, Sound, Video**.
-- Hierarchy: **Scenario > Next Step…** (the steps for the object: 3D steps for a model, image steps for a sprite), **Generate Material for This, Generate Sprite for This, Generate Sound for This, Retexture, Use as Reference**, and **Make Playable** on a rigged character with a walk.
+- Hierarchy: **Scenario > Next Step…** (the steps for the object: 3D steps for a model, image steps for a sprite), **Generate Material for This, Generate Sprite for This, Generate Sound for This, Retexture, Use as Reference**, **Make Playable** on a rigged character with a walk, and **Make Walkable** on a bridge or platform.
 
 ## 6. Library
 

@@ -108,6 +108,15 @@ namespace Scenario.Editor.UI
                 });
             }
             list.AddRange(SelectionCommands(_context));
+            foreach (var mood in SceneActions.Moods)
+            {
+                var preset = mood;
+                list.Add(new Command
+                {
+                    Title = "Light and mood: " + SceneActions.MoodTitle(preset).ToLowerInvariant(), Detail = "Sun, fog, ambient light and post-processing for the open scene",
+                    Icon = "layers", Group = "Scene", Run = () => Report(SceneActions.SetMood(preset)),
+                });
+            }
             list.Add(new Command
             {
                 Title = "Show the Scenario panel in the Scene view", Detail = "Steps and scene actions for the selection, and Ask", Icon = "layers", Group = "Go to",
@@ -192,6 +201,11 @@ namespace Scenario.Editor.UI
                     },
                 };
                 yield return new Command { Title = $"Put {label} on the ground", Icon = "cube", Group = "Selection", Run = () => Report(SceneActions.PutOnGround(target)) };
+                yield return new Command
+                {
+                    Title = $"Make {label} walkable", Detail = "For a bridge, stairs or a platform: invisible walkway, rails and ramps", Icon = "cube", Group = "Selection",
+                    Run = () => Report(SceneActions.MakeWalkable(target)),
+                };
                 yield return new Command
                 {
                     Title = $"Set {label}'s height", Detail = "Or type it here in meters: height 2.5", Icon = "cube", Group = "Selection",

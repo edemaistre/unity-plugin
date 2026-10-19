@@ -248,6 +248,49 @@ namespace Scenario.Editor
                 : Outcome.Fail($"No ground under {go.name}: add a terrain or a floor with a collider below it."));
         }
 
+        /// <summary>An invisible walkway with rails and ramps on a bridge, stairs or a platform (World.MakeWalkable).</summary>
+        public static Outcome MakeWalkable(GameObject go)
+        {
+            if (go == null) return Outcome.Fail("Select a bridge, stairs or a platform.");
+            return OneUndo("Make walkable", () =>
+            {
+                try
+                {
+                    var result = World.MakeWalkable(new World.WalkableSpec { Target = Placer.PathOf(go) });
+                    var ramps = result.StartRamp && result.EndRamp ? ", ramps at both ends" : result.StartRamp || result.EndRamp ? ", a ramp at one end" : "";
+                    var notes = result.Notes.Count > 0 ? " " + string.Join(" ", result.Notes) : "";
+                    return Outcome.Done($"{go.name} is walkable: a {result.Length:0.#} m walkway with rails{ramps}.{notes}", result.Walkway);
+                }
+                catch (ArgumentException e)
+                {
+                    return Outcome.Fail(e.Message);
+                }
+            });
+        }
+
+        /// <summary>Light and mood presets, in the order the panel lists them.</summary>
+        public static IEnumerable<string> Moods => Atmosphere.Presets.Keys;
+
+        public static string MoodTitle(string preset) => preset.Length == 0 ? "" : char.ToUpperInvariant(preset[0]) + preset.Substring(1).Replace('_', ' ');
+
+        /// <summary>A light and mood preset on the open scene: sun, fog, ambient light and, in URP, post-processing (Atmosphere.Apply).</summary>
+        public static Outcome SetMood(string preset)
+        {
+            return OneUndo("Light and mood", () =>
+            {
+                try
+                {
+                    var result = Atmosphere.Apply(new Atmosphere.Spec { Preset = preset });
+                    var notes = result.Notes.Count > 0 ? " " + string.Join(" ", result.Notes) : "";
+                    return Outcome.Done($"Light and mood: {MoodTitle(preset).ToLowerInvariant()}.{notes}", result.Volume != null ? result.Volume : result.Sun.gameObject);
+                }
+                catch (ArgumentException e)
+                {
+                    return Outcome.Fail(e.Message);
+                }
+            });
+        }
+
         public static float Height(GameObject go) => go == null ? 0 : World.BoundsOf(go).size.y;
 
         /// <summary>Scales the object to this height; its base stays where it was.</summary>

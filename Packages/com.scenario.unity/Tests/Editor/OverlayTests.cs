@@ -162,6 +162,8 @@ namespace Scenario.Editor.Tests
             Assert.IsFalse(panel.Q<Button>("action-playable").enabledSelf, "Make playable waits for a rig");
             StringAssert.Contains("rig it first", panel.Q<Label>("playable-issue").text);
             Assert.IsNotNull(panel.Q("action-ground"));
+            Assert.IsNotNull(panel.Q("action-walkable"));
+            Assert.IsNull(panel.Q("mood-apply"), "light and mood is for the scene, not an object");
             Assert.AreEqual(1f, panel.Q<FloatField>("height-field").value, 0.01f);
             Assert.AreEqual("Overlay Crate", panel.Q<Label>("panel-title").text);
 
@@ -170,10 +172,12 @@ namespace Scenario.Editor.Tests
             Assert.IsNotNull(panel.Q("scatter-run"));
             Assert.IsNull(panel.Q("step-retexture"));
             Assert.IsNull(panel.Q("action-playable"));
+            Assert.AreEqual("Golden hour", panel.Q<DropdownField>("mood-preset").value);
 
             panel.Show(SceneActions.For(null));
             foreach (var type in SceneActions.Shortcuts) Assert.IsNotNull(panel.Q("generate-" + type), type);
             Assert.IsNull(panel.Q("scatter-run"));
+            Assert.IsNotNull(panel.Q("mood-apply"));
             Assert.IsNotNull(panel.Q<TextField>("ask-field"), "the request being typed survives");
         }
 
@@ -215,6 +219,36 @@ namespace Scenario.Editor.Tests
             var floating = SceneActions.PutOnGround(cube);
             Assert.IsFalse(floating.Ok);
             StringAssert.Contains("No ground", floating.Message);
+        }
+
+        [Test]
+        public void MakeWalkable_LaysAWalkway_InOneUndo()
+        {
+            Cube("Overlay Bank West", new Vector3(-6, -0.5f, 0)).transform.localScale = new Vector3(4, 1, 4);
+            Cube("Overlay Bank East", new Vector3(6, -0.5f, 0)).transform.localScale = new Vector3(4, 1, 4);
+            var plank = Cube("Overlay Plank", new Vector3(0, 0.3f, 0));
+            plank.transform.localScale = new Vector3(9, 0.2f, 2);
+
+            var outcome = SceneActions.MakeWalkable(plank);
+            Assert.IsTrue(outcome.Ok, outcome.Message);
+            StringAssert.Contains("walkway with rails", outcome.Message);
+            Assert.AreEqual("Overlay Plank Walkway", outcome.Object.name, "a stretched plank gets its walkway beside it");
+            Assert.IsFalse(plank.GetComponent<BoxCollider>().enabled);
+
+            Undo.PerformUndo();
+            Assert.IsNull(GameObject.Find("Overlay Plank Walkway"), "one Undo removes the walkway");
+            Assert.IsTrue(plank.GetComponent<BoxCollider>().enabled, "and turns the plank's collider back on");
+            Assert.IsFalse(SceneActions.MakeWalkable(null).Ok);
+        }
+
+        [Test]
+        public void SetMood_UnknownPreset_SaysWhichExist()
+        {
+            var outcome = SceneActions.SetMood("noon_on_mars");
+            Assert.IsFalse(outcome.Ok);
+            StringAssert.Contains("golden_hour", outcome.Message);
+            CollectionAssert.Contains(SceneActions.Moods.ToList(), "misty_morning");
+            Assert.AreEqual("Misty morning", SceneActions.MoodTitle("misty_morning"));
         }
 
         [Test]

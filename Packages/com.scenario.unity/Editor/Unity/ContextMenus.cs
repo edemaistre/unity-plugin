@@ -168,6 +168,12 @@ namespace Scenario.Editor
         [MenuItem("GameObject/Scenario/Make Playable", true)]
         static bool MakePlayableValid() => SceneObjectSelected() && SceneActions.Current().CanMakePlayable;
 
+        [MenuItem("GameObject/Scenario/Make Walkable", false, 43)]
+        static void MakeWalkable() => SceneActions.Report(SceneActions.MakeWalkable(Selection.activeGameObject));
+
+        [MenuItem("GameObject/Scenario/Make Walkable", true)]
+        static bool MakeWalkableValid() => SceneObjectSelected() && Selection.activeGameObject.GetComponentInChildren<MeshFilter>() != null;
+
         [MenuItem("GameObject/Scenario/Generate Material for This", true)]
         [MenuItem("GameObject/Scenario/Generate Sprite for This", true)]
         [MenuItem("GameObject/Scenario/Generate Sound for This", true)]

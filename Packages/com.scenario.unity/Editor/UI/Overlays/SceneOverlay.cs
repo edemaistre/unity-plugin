@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Scenario.Editor.Core;
 using UnityEditor;
 using UnityEditor.Overlays;
@@ -46,6 +47,7 @@ namespace Scenario.Editor.UI
     {
         static Object _scatterSource;
         static int _scatterCount = 20;
+        static string _mood = "golden_hour";
         static float _scatterArea = 40;
 
         readonly VisualElement _icon;
@@ -145,6 +147,7 @@ namespace Scenario.Editor.UI
                     break;
                 case SelectionContext.TerrainMode:
                     AddScatter(context);
+                    AddMood();
                     break;
                 case SelectionContext.Image:
                 case SelectionContext.Asset:
@@ -152,6 +155,7 @@ namespace Scenario.Editor.UI
                     break;
                 default:
                     AddGenerate(context);
+                    AddMood();
                     break;
             }
         }
@@ -249,6 +253,29 @@ namespace Scenario.Editor.UI
             var row = Ui.Row(Ui.Text("Height (m)", "sc-dim", "sc-small"), height, set);
             row.style.marginTop = 6;
             _body.Add(row);
+
+            var walkable = Ui.Button("Make walkable", () => Act(SceneActions.MakeWalkable(_context.Target)), null, "sc-btn-sm");
+            walkable.name = "action-walkable";
+            walkable.tooltip = "For a bridge, stairs or a platform: an invisible walkway on its deck (holes filled, bumps smoothed), side rails, and ramps to the ground. Run it again after moving it.";
+            walkable.style.alignSelf = Align.FlexStart;
+            walkable.style.marginTop = 6;
+            _body.Add(walkable);
+        }
+
+        void AddMood()
+        {
+            _body.Add(Ui.Section("Light and mood"));
+            var titles = SceneActions.Moods.Select(SceneActions.MoodTitle).ToList();
+            var presets = SceneActions.Moods.ToList();
+            var pick = new DropdownField(titles, Math.Max(0, presets.IndexOf(_mood))) { name = "mood-preset" };
+            pick.style.flexGrow = 1;
+            pick.style.flexShrink = 1;
+            pick.RegisterValueChangedCallback(e => _mood = presets[Math.Max(0, titles.IndexOf(e.newValue))]);
+            var apply = Ui.Button("Apply", () => Act(SceneActions.SetMood(_mood)), null, "sc-btn-sm");
+            apply.name = "mood-apply";
+            apply.style.marginLeft = 4;
+            apply.tooltip = "Sets the sun, fog and ambient light, and in URP a post-processing volume. One Undo step.";
+            _body.Add(Ui.Row(pick, apply));
         }
 
         void AddScatter(SelectionContext c)
