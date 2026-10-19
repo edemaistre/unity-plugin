@@ -3,7 +3,9 @@
 </p>
 <h1 align="center">Scenario for Unity</h1>
 <p align="center">
-  <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-black"> <!-- x-release-please-version -->
+  <!-- x-release-please-start-version -->
+  <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-black">
+  <!-- x-release-please-end -->
   <img alt="Unity 6.0 and later" src="https://img.shields.io/badge/Unity-6.0%2B-black?logo=unity">
   <img alt="Render pipelines" src="https://img.shields.io/badge/pipelines-Built--in%20%C2%B7%20URP%20%C2%B7%20HDRP-555">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
