@@ -652,7 +652,7 @@ namespace Scenario.Editor.Agent
                 ["name"] = model?.Name ?? id,
                 ["output_type"] = OutputTypes.TypeFor(model),
                 ["prompt_field"] = SchemaForm.PromptName(fields),
-                ["prompt_spark"] = Json.Truthy(schema.Value["prompt_spark"]),
+                ["prompt_spark"] = SchemaForm.SparkAvailable(schema.Value, fields),
                 ["presets"] = OutputTypes.Presets(id),
                 ["fields"] = new JArray(fields.Select(FieldJson)),
             });

@@ -119,7 +119,7 @@ namespace Scenario.Editor.UI
             promptLabel.Add(Ui.Spacer());
             _improve = Ui.Button("Improve", ImprovePrompt, "wand", "sc-btn-ghost", "sc-btn-sm");
             _improve.name = "improve";
-            _improve.tooltip = "Prompt Spark rewrites your prompt for this model. Charged in Creative Units, the price shows here.";
+            _improve.tooltip = "Prompt Spark rewrites your prompt for this model. Its price shows on the button first.";
             promptLabel.Add(_improve);
             _promptBox.Add(promptLabel);
             _prompt = new TextField { multiline = true, name = "prompt" };
@@ -357,7 +357,7 @@ namespace Scenario.Editor.UI
                 Window.Toast($"{Name(_modelId)} takes no {unplaced[0].Kind} input, so the reference was left out.", "info");
             _pendingNotice = false;
             BuildForm();
-            if (Json.Truthy(_schema["prompt_spark"]) && _promptName.Length > 0) _ = LoadSparkPrice(version);
+            if (SchemaForm.SparkAvailable(_schema, _fields)) _ = LoadSparkPrice(version);
         }
 
         bool _pendingNotice;
@@ -621,9 +621,9 @@ namespace Scenario.Editor.UI
 
         void UpdateImprove()
         {
-            var available = _schema != null && Json.Truthy(_schema["prompt_spark"]) && _promptName.Length > 0;
+            var available = SchemaForm.SparkAvailable(_schema, _fields);
             _improve.style.display = available ? DisplayStyle.Flex : DisplayStyle.None;
-            Ui.SetButtonText(_improve, _sparking ? "Improving…" : _sparkCu >= 0 ? $"Improve · {Ui.Cu(_sparkCu)}" : "Improve");
+            Ui.SetButtonText(_improve, _sparking ? "Improving…" : _sparkCu == 0 ? "Improve · free" : _sparkCu > 0 ? $"Improve · {Ui.Cu(_sparkCu)}" : "Improve");
             _improve.SetEnabled(!_sparking);
         }
 
