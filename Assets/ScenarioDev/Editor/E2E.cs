@@ -17,7 +17,10 @@ namespace ScenarioDev
     /// instead of opening a browser; a person opens it and signs in (Scenario's sign-in page has a
     /// human check, so a headless browser cannot). Nothing is saved: the tokens make one free read and
     /// are dropped. Agent: turns the agent bridge on and keeps the editor running until a stop file
-    /// appears, so an agent CLI can drive it (tools/e2e_agent.py).
+    /// appears, so an agent CLI can drive it (tools/e2e_agent.py, tools/world_rehearsal.py). For long
+    /// builds: SCENARIO_E2E_MINUTES (default 15), SCENARIO_E2E_AUTO_APPROVE and SCENARIO_E2E_BUDGET (CU,
+    /// for this run only; the user's settings come back at the end) and SCENARIO_E2E_SCENE (a new scene
+    /// with a camera and a light, saved at that path, for the agent to build in).
     /// Run with -batchmode -executeMethod ScenarioDev.E2E.OAuth or .Agent.
     /// </summary>
     public static class E2E
@@ -65,13 +68,27 @@ namespace ScenarioDev
         }
 
         static double _deadline;
+        static string _settings;
+
+        static int EnvInt(string name, int fallback) => int.TryParse(Environment.GetEnvironmentVariable(name), out var value) ? value : fallback;
 
         public static void Agent()
         {
             Directory.CreateDirectory(Dir);
             var stop = Path.Combine(Dir, "agent-stop");
             if (File.Exists(stop)) File.Move(stop, stop + "." + DateTime.Now.ToString("HHmmss"));
-            ScenarioUserSettings.instance.AgentCanEditScene = true;
+            _settings = EditorJsonUtility.ToJson(ScenarioUserSettings.instance);
+            var settings = ScenarioUserSettings.instance;
+            settings.AgentCanEditScene = true;
+            settings.AgentAutoApproveCu = EnvInt("SCENARIO_E2E_AUTO_APPROVE", settings.AgentAutoApproveCu);
+            settings.AgentSessionBudgetCu = EnvInt("SCENARIO_E2E_BUDGET", settings.AgentSessionBudgetCu);
+            var scene = Environment.GetEnvironmentVariable("SCENARIO_E2E_SCENE") ?? "";
+            if (scene.Length > 0)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(scene) ?? "Assets");
+                var created = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.DefaultGameObjects, UnityEditor.SceneManagement.NewSceneMode.Single);
+                UnityEditor.SceneManagement.EditorSceneManager.SaveScene(created, scene);
+            }
             AgentServer.SetEnabled(true);
             File.WriteAllText(Path.Combine(Dir, "agent-endpoint.json"), new JObject
             {
@@ -81,7 +98,7 @@ namespace ScenarioDev
                 ["error"] = AgentServer.Error,
             }.ToString());
             Debug.Log($"E2E agent bridge running={AgentServer.Running} url={AgentServer.Url}");
-            _deadline = EditorApplication.timeSinceStartup + 900;
+            _deadline = EditorApplication.timeSinceStartup + 60 * EnvInt("SCENARIO_E2E_MINUTES", 15);
             EditorApplication.update += Wait;
         }
 
@@ -92,6 +109,8 @@ namespace ScenarioDev
             File.WriteAllLines(Path.Combine(Dir, "agent-activity.txt"),
                 AgentServer.Activity.Select(a => $"{a.Time} {a.Client} {a.Tool} {(a.IsError ? "ERROR " : "")}{a.Summary}"));
             AgentServer.SetEnabled(false);
+            EditorJsonUtility.FromJsonOverwrite(_settings, ScenarioUserSettings.instance);
+            ScenarioUserSettings.instance.Save();
             Debug.Log("E2E agent done");
             EditorApplication.Exit(0);
         }

@@ -50,6 +50,16 @@ In `Packages/com.scenario.unity/Editor/` (assembly `Scenario.Editor`):
   `tools/build_icons.py`).
 - `Agent/`: `AgentServer` (HTTP on 127.0.0.1, token, Origin and Host checks,
   JSON-RPC), `AgentTools` (tool registry), `ClientSetup` (setup lines).
+- `Unity/World.cs` (terrain from a heightmap, painted layers, scatter, sizing
+  and grounding) and `Unity/Playable.cs` (`make_playable`, and `PlaySession`:
+  Play mode without a domain reload so the bridge keeps serving, playtest walks,
+  frame recording, the user's Enter Play Mode setting restored).
+
+In `Packages/com.scenario.unity/Runtime/` (assembly `Scenario.Runtime`, ships in
+builds): `ScenarioPlayer` (third-person character on a CharacterController,
+Animator parameters Speed, Grounded, Jump), `ScenarioFollowCamera`,
+`ScenarioAutopilot` (waypoints), `ScenarioFrameRecorder` (PNG frames at a fixed
+frame rate), `ScenarioInput` (Input System or legacy input).
 
 Tests: `Packages/com.scenario.unity/Tests/Editor/` (assembly
 `Scenario.Editor.Tests`), against the scripted server `FakeMcp` in

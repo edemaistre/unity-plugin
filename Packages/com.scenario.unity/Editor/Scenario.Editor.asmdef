@@ -2,6 +2,7 @@
     "name": "Scenario.Editor",
     "rootNamespace": "Scenario.Editor",
     "references": [
+        "Scenario.Runtime",
         "glTFast",
         "glTFast.Editor",
         "glTFast.Export",

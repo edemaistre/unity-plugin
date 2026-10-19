@@ -80,12 +80,23 @@ Feed one result into the next model through its file input:
 
 Off when the user turns off **Agents can edit the scene**; the read tools (`scene_info`, `object_get`, `assets_find`, `console_logs`, `capture_view`) keep working.
 
-- `object_create` (empty, primitive or prefab), `object_set` (name, active, parent, transform, tag, layer), `object_delete`.
+- `object_create` (empty, primitive or prefab), `object_set` (name, active, parent, transform, tag, layer, `height` in meters, `ground` to sit it on the ground below), `object_delete`.
 - `component_add`, `component_set`: serialized paths (`m_Intensity`) or public properties (`intensity`); vectors as `[x,y,z]`, colors as `[r,g,b,a]` or `#RRGGBB`, references as asset or hierarchy paths. `object_get` with `properties: true` lists what can be set.
 - `material_assign`, `skybox_set`, `select`, `scene_save` (an untitled scene needs a path).
 - `assets_find` with `label: "Scenario"` lists every generated asset in the project.
 
 Each edit is one Undo step, so the user can revert anything you did.
+
+## Walkable worlds
+
+From one prompt to a world a player can walk in:
+
+1. `terrain_create`: ground with a collider. Shape it with a heightmap image you generate first (a top-down grayscale heightmap, white is high), level `flat_areas` where buildings go, and paint `layers` with generated materials (the first is the base; others by `min_height` or `min_slope`). `edge_falloff` makes an island or plateau.
+2. Generate the set pieces, then `object_set` with `height` (meters) and `ground: true` to size each one and sit it on the terrain. Typical heights: a person 1.8, a door 2.2, a house 6 to 9, a pine 8 to 14, a rock 0.5 to 2.
+3. `scatter` repeats a model on the ground (`on`: the terrain), with a `height` range, `keep_clear` zones around paths and buildings, and colliders.
+4. A character: generate it, rig it, animate idle, walk, run and jump (`motions_find` for library ids), then `make_playable` with those results. It builds the controller, sizes the character, matches speeds to the clips and sets up the follow camera.
+5. `play` with `action: "walk"` and waypoints (`run`, `jump`, `wait`) to playtest: it reports the points reached, falls and jumps. `play` with `action: "stop"` before editing again; edits made in Play mode are lost. `record: true` (or `action: "record"`) writes PNG frames of the main camera at a fixed frame rate.
+6. `scene_save`.
 
 ## Check your work
 

@@ -190,10 +190,11 @@ Turn on **Agent** in the window and the editor serves an MCP server named `scena
     <td width="40%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/agent-dark.png"><img alt="The Agent view: server on, client setup buttons, permissions and activity" src="docs/images/screens/agent-light.png"></picture></td>
     <td>
 
-The agent gets two sets of tools:
+The agent gets three sets of tools:
 
 - **Scenario**: find a model, find a motion in Meshy's library, price, generate, run workflows, follow jobs, import, upload.
-- **Scene**: inspect the hierarchy, create and change objects and components, assign materials, set the skybox, save, read the console, and capture the Scene view or the main camera as an image it can look at.
+- **Scene**: inspect the hierarchy, create and change objects and components, size them in meters and sit them on the ground, assign materials, set the skybox, save, read the console, and capture the Scene view or the main camera as an image it can look at.
+- **World**: build a terrain from a generated heightmap with ground materials painted by height and slope, scatter models on it with colliders, turn a rigged and animated character into a third-person player with a follow camera, and playtest in Play mode (the character walks, runs and jumps through waypoints; the result says what it reached and whether it fell) or record frames.
 
 Every scene edit is one Undo step. A paid call above the per-call limit (20 CU by default) or beyond the session budget (300 CU) waits for **Approve** in the window. The activity log lists every call.
 

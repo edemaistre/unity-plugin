@@ -56,7 +56,7 @@ namespace Scenario.Editor
         /// walk file is "Armature/Hip" on the rigged model: a copy with the paths fixed is stored in the
         /// controller.
         /// </summary>
-        static AnimationClip Fit(AnimationClip clip, Transform holder, Object container)
+        internal static AnimationClip Fit(AnimationClip clip, Transform holder, Object container)
         {
             var bindings = AnimationUtility.GetCurveBindings(clip);
             var paths = bindings.Select(b => b.path).Where(p => p.Length > 0).Distinct().ToList();

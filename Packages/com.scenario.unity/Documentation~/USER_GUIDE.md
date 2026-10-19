@@ -160,6 +160,8 @@ Permissions:
 
 The activity log lists every call: time, client, tool, a short summary, approvals and errors.
 
+The agent can also build walkable worlds: a terrain from a generated heightmap with painted ground, models scattered and grounded, a rigged character turned into a player you control with WASD, Shift, Space and the mouse, and playtests in Play mode. The player uses components you can add by hand too, under **Add Component > Scenario**: Scenario Player, Scenario Follow Camera, Scenario Autopilot and Scenario Frame Recorder.
+
 The agent sees the same catalog, prices and import rules as you. A skill file for agents ships with the package in `Documentation~/agent-skill/SKILL.md`.
 
 ## 10. Settings
