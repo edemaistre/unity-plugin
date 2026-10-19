@@ -20,7 +20,8 @@ namespace ScenarioDev
     /// appears, so an agent CLI can drive it (tools/e2e_agent.py, tools/world_rehearsal.py). For long
     /// builds: SCENARIO_E2E_MINUTES (default 15), SCENARIO_E2E_AUTO_APPROVE and SCENARIO_E2E_BUDGET (CU,
     /// for this run only; the user's settings come back at the end) and SCENARIO_E2E_SCENE (a new scene
-    /// with a camera and a light, saved at that path, for the agent to build in).
+    /// with a camera and a light, saved at that path, for the agent to build in). Unity's audio is muted
+    /// for the session.
     /// Run with -batchmode -executeMethod ScenarioDev.E2E.OAuth or .Agent.
     /// </summary>
     public static class E2E
@@ -69,6 +70,7 @@ namespace ScenarioDev
 
         static double _deadline;
         static string _settings;
+        static bool _muted;
 
         static int EnvInt(string name, int fallback) => int.TryParse(Environment.GetEnvironmentVariable(name), out var value) ? value : fallback;
 
@@ -78,6 +80,9 @@ namespace ScenarioDev
             var stop = Path.Combine(Dir, "agent-stop");
             if (File.Exists(stop)) File.Move(stop, stop + "." + DateTime.Now.ToString("HHmmss"));
             _settings = EditorJsonUtility.ToJson(ScenarioUserSettings.instance);
+            // Silent session: scenes the agent builds play their audio in Play mode, and nobody is listening.
+            _muted = EditorUtility.audioMasterMute;
+            EditorUtility.audioMasterMute = true;
             var settings = ScenarioUserSettings.instance;
             settings.AgentCanEditScene = true;
             settings.AgentAutoApproveCu = EnvInt("SCENARIO_E2E_AUTO_APPROVE", settings.AgentAutoApproveCu);
@@ -111,6 +116,7 @@ namespace ScenarioDev
             AgentServer.SetEnabled(false);
             EditorJsonUtility.FromJsonOverwrite(_settings, ScenarioUserSettings.instance);
             ScenarioUserSettings.instance.Save();
+            EditorUtility.audioMasterMute = _muted;
             Debug.Log("E2E agent done");
             EditorApplication.Exit(0);
         }

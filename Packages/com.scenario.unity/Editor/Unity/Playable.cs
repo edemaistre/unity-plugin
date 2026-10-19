@@ -143,6 +143,8 @@ namespace Scenario.Editor
             body.center = new Vector3(0, height / 2 + body.skinWidth, 0);
             body.stepOffset = Mathf.Min(0.4f, height * 0.2f);
             body.slopeLimit = 50f;
+            // At high frame rates a step is under the default 1 mm minimum and the controller would not move.
+            body.minMoveDistance = 0f;
 
             var component = Undo.AddComponent<ScenarioPlayer>(player);
             component.animator = animator;
@@ -415,6 +417,9 @@ namespace Scenario.Editor
             public string Folder = "";
         }
 
+        /// <summary>The autopilot of the walk in progress, or null.</summary>
+        public static ScenarioAutopilot Walking { get; private set; }
+
         public static async Task<WalkResult> Walk(WalkSpec spec)
         {
             if (!EditorApplication.isPlaying) throw new InvalidOperationException("Unity is not in Play mode: start it first.");
@@ -425,6 +430,7 @@ namespace Scenario.Editor
             var jumps = player.Jumps;
             var pilot = player.gameObject.AddComponent<ScenarioAutopilot>();
             pilot.waypoints = spec.Points;
+            Walking = pilot;
             ScenarioFrameRecorder recorder = null;
             if (spec.Record != null) recorder = AddRecorder(spec.Record, out result.Folder);
             try
@@ -445,6 +451,7 @@ namespace Scenario.Editor
             }
             finally
             {
+                if (Walking == pilot) Walking = null;
                 if (pilot != null) Object.Destroy(pilot);
                 if (recorder != null) Object.Destroy(recorder);
             }

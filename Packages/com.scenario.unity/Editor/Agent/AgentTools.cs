@@ -46,9 +46,20 @@ namespace Scenario.Editor.Agent
             "Flow: scenario_status, then models_find (add recommend_for_prompt to get Scenario's ranked picks), model_schema, estimate (free), generate (paid: it waits, imports and places the result, and returns Unity asset paths and scene object paths). " +
             "Then capture_view to look at the scene. Inputs that take files accept Scenario asset ids or Unity asset paths (Assets/...), uploaded for you. " +
             "Money rules: a paid call is never retried by the bridge. If generate reports an unknown outcome, call jobs instead of generating again. Calls above the user's limit wait for approval in Unity. " +
+            "No call blocks longer than 45 s: slow work (3D, video, audio, a long playtest) answers \"still running\" and names the call that follows it (jobs or play status, with wait_seconds). " +
+            "For a batch, call generate with wait false for each request, then jobs with wait_seconds. " +
             "Scene objects are addressed by hierarchy path (Root/Child). Each scene edit is one Undo step the user can revert. " +
             "Walkable worlds: terrain_create (from a generated heightmap image and generated materials), then generated models sized and grounded with object_set (height, ground) or scattered with scatter, " +
             "then a rigged and animated character turned into a player with make_playable, then play (walk) to playtest it.";
+
+        /// <summary>
+        /// Longest a tool call blocks. MCP clients commonly give up on a call after 60 s, so slower work
+        /// answers "still running" with the call that follows it. Tests lower it.
+        /// </summary>
+        internal static int CallSeconds = 45;
+
+        /// <summary>Seconds left to wait in a call that began at started, out of the asked wait.</summary>
+        static int Budget(double started, int asked) => (int)Math.Max(0, Math.Min(asked, CallSeconds - (Json.Now() - started)));
 
         static ScenarioService S => ScenarioService.Instance;
         // Built on first use: Build() reads static helpers declared further down.
@@ -214,7 +225,7 @@ namespace Scenario.Editor.Agent
                 new Tool
                 {
                     Name = "generate",
-                    Description = "Paid. Generates with a Scenario model, waits, imports the result into Assets and places it in the scene (on target when given). Returns Unity asset paths and scene object paths. Above the user's limit it waits for approval in Unity. Never call it again for the same request after an unknown outcome: call jobs.",
+                    Description = "Paid. Generates with a Scenario model, waits up to 45 s, imports the result into Assets and places it in the scene (on target when given). Returns Unity asset paths and scene object paths. A slower job answers \"still running\" with its local_id: it imports and places itself when done, and jobs with wait_seconds follows it. Above the user's limit it waits for approval in Unity. Never call it again for the same request after an unknown outcome: call jobs.",
                     Schema = Schema(new[] { "model_id" },
                         ("model_id", Str("Model id.")),
                         ("parameters", Obj("Model parameters from model_schema. File inputs take Scenario asset ids or Unity asset paths.")),
@@ -223,20 +234,20 @@ namespace Scenario.Editor.Agent
                         ("target", Str("Hierarchy path of an object to apply the result to (sprite, material, audio source, video player).")),
                         ("folder", Str("Assets folder for the files (default Assets/Scenario/<Type>/<date>).")),
                         ("max_cu", Num("Refuse without sending if the price is above this.")),
-                        ("wait", Bool("Wait for the result (default true).")),
-                        ("timeout_seconds", Int("How long to wait, default 240."))),
+                        ("wait", Bool("Wait for the result, up to 45 s (default true). False returns at once: use it to send a batch, then follow with jobs.")),
+                        ("timeout_seconds", Int("How long to wait, at most 45 (the default)."))),
                     Run = (a, c) => Generate(a, c, workflow: false),
                 },
                 new Tool
                 {
                     Name = "workflow_run",
-                    Description = "Paid. Runs a Scenario workflow (see workflows_find) with its inputs, waits and imports the outputs. Same approval and money rules as generate.",
+                    Description = "Paid. Runs a Scenario workflow (see workflows_find) with its inputs, waits up to 45 s and imports the outputs; a slower run is followed with jobs. Same approval and money rules as generate.",
                     Schema = Schema(new[] { "workflow_id" },
                         ("workflow_id", Str("Workflow id.")),
                         ("inputs", Obj("Workflow inputs by name. File inputs take Scenario asset ids or Unity asset paths.")),
                         ("max_cu", Num("Refuse without sending if the price is above this.")),
-                        ("wait", Bool("Wait for the outputs (default true).")),
-                        ("timeout_seconds", Int("How long to wait, default 300."))),
+                        ("wait", Bool("Wait for the outputs, up to 45 s (default true).")),
+                        ("timeout_seconds", Int("How long to wait, at most 45 (the default)."))),
                     Run = (a, c) => Generate(a, c, workflow: true),
                 },
                 new Tool
@@ -259,9 +270,9 @@ namespace Scenario.Editor.Agent
                 new Tool
                 {
                     Name = "jobs", ReadOnly = true,
-                    Description = "Recent requests from this Unity project with state, cost, files and placed objects. Give local_id or job_id to get one, and wait_seconds to wait for it to finish.",
+                    Description = "Recent requests from this Unity project with state, cost, files and placed objects. Give local_id or job_id to get one, and wait_seconds to wait for it to finish (call again while it says still running).",
                     Schema = Schema(None, ("local_id", Str("Ledger id from generate.")), ("job_id", Str("Scenario job id.")),
-                        ("wait_seconds", Int("Wait up to this long for the job to finish.")), ("limit", Int("Rows to list, default 10."))),
+                        ("wait_seconds", Int("Wait up to this long, at most 45, for the job to finish.")), ("limit", Int("Rows to list, default 10."))),
                     Run = Jobs,
                 },
                 new Tool
@@ -445,8 +456,10 @@ namespace Scenario.Editor.Agent
                 {
                     Name = "play",
                     Description = "Play mode: start, stop, status, walk (playtest: the player walks or runs through waypoints and the result says which were reached, falls, jumps, time) and record (PNG frames of the main camera at a fixed frame rate). " +
-                                  "Walk and record start Play mode when needed. Edits made in Play mode are lost when it stops.",
+                                  "Walk and record start Play mode when needed and keep running in Unity: a call answers within 45 s, and if the walk or recording is not over, status with wait_seconds returns its result. " +
+                                  "Edits made in Play mode are lost when it stops.",
                     Schema = Schema(new[] { "action" }, ("action", Str("start, stop, status, walk or record.", "start", "stop", "status", "walk", "record")),
+                        ("wait_seconds", Int("Status: wait up to this long, at most 45, for a running walk or recording to end.")),
                         ("player", Str("Player path, default the first ScenarioPlayer.")),
                         ("waypoints", Objects("For walk: {position: [x, y, z] or at: object path, run (bool), jump (bool: jump on reaching it), wait (seconds)}.")),
                         ("timeout", Num("Walk: seconds of game time before giving up, default 90.")),
@@ -725,6 +738,7 @@ namespace Scenario.Editor.Agent
 
         static async Task<JObject> Generate(JObject args, Context context, bool workflow)
         {
+            var started = Json.Now();
             var request = await BuildRequest(args, context, workflow);
             var block = S.BlockReason(request);
             if (block.Length > 0) throw new ToolError(block + " Nothing was sent.");
@@ -749,10 +763,8 @@ namespace Scenario.Editor.Agent
             }
             AgentServer.AddSpent(quote.Cu);
             var row = result.Value;
-            if (B_(args, "wait", true)) await WaitFor(row, I_(args, "timeout_seconds", workflow ? 300 : 240));
-            var data = RowJson(row);
-            if (!row.IsFinal) data["next"] = $"Still {row.State}. Call jobs with local_id {row.LocalId} and wait_seconds to get the result.";
-            return Ok(data);
+            if (B_(args, "wait", true)) await WaitFor(row, Budget(started, I_(args, "timeout_seconds", CallSeconds)));
+            return Ok(Following(row));
         }
 
         static bool Done(JobRow row)
@@ -764,8 +776,17 @@ namespace Scenario.Editor.Agent
 
         static async Task WaitFor(JobRow row, int seconds)
         {
-            var until = Json.Now() + Math.Max(0, Math.Min(900, seconds));
+            var until = Json.Now() + Math.Max(0, Math.Min(CallSeconds, seconds));
             while (!Done(row) && Json.Now() < until) await Task.Delay(1000);
+        }
+
+        /// <summary>The row, plus the call to make next while it is still running.</summary>
+        static JObject Following(JobRow row)
+        {
+            var data = RowJson(row);
+            if (!Done(row))
+                data["next"] = $"Still {row.State}: it imports{(row.Place ? " and places" : "")} itself when it finishes. Call jobs with local_id {row.LocalId} and wait_seconds {CallSeconds} to follow it. Do not generate it again.";
+            return data;
         }
 
         static JObject RowJson(JobRow row)
@@ -799,7 +820,7 @@ namespace Scenario.Editor.Agent
                 if (row == null) throw new ToolError("No such job in this Unity project.");
                 var wait = I_(args, "wait_seconds", 0);
                 if (wait > 0) await WaitFor(row, wait);
-                return Ok(RowJson(row));
+                return Ok(Following(row));
             }
             var limit = Math.Max(1, Math.Min(50, I_(args, "limit", 10)));
             return Ok(new JObject { ["jobs"] = new JArray(S.Ledger.Jobs.Where(r => r.State != JobState.Dismissed).Take(limit).Select(RowJson)) });
@@ -1543,11 +1564,71 @@ namespace Scenario.Editor.Agent
             ["falls"] = player.Falls,
         };
 
-        static JObject PlayStatus() => new JObject
+        // The walk or recording in progress, kept until its result is returned.
+        static Task<JObject> _playRun;
+        static string _playRunKind = "";
+
+        static JObject PlayStatus()
         {
-            ["playing"] = EditorApplication.isPlaying,
-            ["players"] = new JArray(UnityEngine.Object.FindObjectsByType<ScenarioPlayer>(FindObjectsSortMode.None).Select(PlayerJson)),
-        };
+            var data = new JObject
+            {
+                ["playing"] = EditorApplication.isPlaying,
+                ["players"] = new JArray(UnityEngine.Object.FindObjectsByType<ScenarioPlayer>(FindObjectsSortMode.None).Select(PlayerJson)),
+            };
+            if (_playRun == null) return data;
+            data["running"] = _playRunKind;
+            var pilot = PlaySession.Walking;
+            if (pilot != null && pilot.waypoints.Count > 0)
+                data["walk"] = new JObject
+                {
+                    ["toward_waypoint"] = Math.Min(pilot.Current + 1, pilot.waypoints.Count),
+                    ["of"] = pilot.waypoints.Count,
+                    ["seconds"] = Math.Round(pilot.Elapsed, 1),
+                };
+            data["next"] = $"The {_playRunKind} is still running. Call play with action status and wait_seconds {CallSeconds} to get its result.";
+            return data;
+        }
+
+        /// <summary>Waits for the running walk or recording within the call's time, then returns its result or where it is.</summary>
+        static async Task<JObject> FollowPlay(double started, int seconds)
+        {
+            var run = _playRun;
+            if (run == null) return Ok(PlayStatus());
+            await PlaySession.Until(() => run.IsCompleted, Budget(started, seconds));
+            if (!run.IsCompleted) return Ok(PlayStatus());
+            _playRun = null;
+            if (run.IsFaulted) throw new ToolError(run.Exception.GetBaseException().Message);
+            return Ok(run.Result);
+        }
+
+        static async Task<JObject> WalkResultJson(PlaySession.WalkSpec spec)
+        {
+            var walk = await PlaySession.Walk(spec);
+            var reached = walk.ReachedAt.Count(t => t >= 0);
+            var data = new JObject
+            {
+                ["reached"] = new JArray(walk.ReachedAt.Select((t, i) => new JObject { ["waypoint"] = i + 1, ["seconds"] = t >= 0 ? Math.Round(t, 1) : (JToken)"given up (stuck)" })),
+                ["falls"] = walk.Falls,
+                ["jumps"] = walk.Jumps,
+                ["seconds"] = Math.Round(walk.Seconds, 1),
+                ["longest_stuck"] = Math.Round(walk.LongestStuck, 1),
+                ["start"] = V(walk.Start),
+                ["end"] = V(walk.End),
+                ["summary"] = $"Reached {reached} of {spec.Points.Count} points in {walk.Seconds:0.0} s" + (walk.Falls > 0 ? $", fell {walk.Falls} time(s)" : ", no falls") + (walk.TimedOut ? ", timed out." : "."),
+            };
+            if (walk.Folder.Length > 0)
+            {
+                data["frames"] = walk.Frames;
+                data["folder"] = walk.Folder;
+            }
+            return data;
+        }
+
+        static async Task<JObject> RecordResultJson(PlaySession.RecordSpec spec)
+        {
+            var (frames, folder) = await PlaySession.Record(spec);
+            return new JObject { ["frames"] = frames, ["folder"] = folder, ["encode"] = $"ffmpeg -framerate {spec.FrameRate} -i \"{folder}/%05d.png\" -c:v libx264 -pix_fmt yuv420p -crf 16 out.mp4" };
+        }
 
         static PlaySession.RecordSpec RecordSpec(JObject args) => new PlaySession.RecordSpec
         {
@@ -1559,28 +1640,41 @@ namespace Scenario.Editor.Agent
             Seconds = Math.Max(0, F_(args, "seconds", 0)),
         };
 
-        static async Task Playing()
+        static async Task Playing(double started)
         {
             if (EditorApplication.isPlaying) return;
-            if (!await PlaySession.Start()) throw new ToolError("Unity did not enter Play mode. Check console_logs for compile errors.");
+            if (!await PlaySession.Start(Math.Max(1, Budget(started, CallSeconds))))
+                throw new ToolError(EditorApplication.isPlayingOrWillChangePlaymode
+                    ? "Unity is still entering Play mode. Call play with action status, then try again."
+                    : "Unity did not enter Play mode. Check console_logs for compile errors.");
+        }
+
+        static void NotRunning()
+        {
+            if (_playRun != null && !_playRun.IsCompleted)
+                throw new ToolError($"A {_playRunKind} is running. Call play with action status and wait_seconds {CallSeconds}, or stop.");
         }
 
         static async Task<JObject> Play(JObject args, Context context)
         {
+            var started = Json.Now();
             switch (Need(args, "action"))
             {
                 case "start":
-                    await Playing();
+                    await Playing(started);
                     return Ok(PlayStatus());
                 case "stop":
-                    if (!await PlaySession.Stop()) throw new ToolError("Unity did not leave Play mode.");
+                    _playRun = null;
+                    if (!await PlaySession.Stop(Math.Max(1, Budget(started, CallSeconds)))) throw new ToolError("Unity did not leave Play mode yet. Call play with action status.");
                     return Ok(PlayStatus());
                 case "status":
-                    return Ok(PlayStatus());
+                    return await FollowPlay(started, I_(args, "wait_seconds", 0));
                 case "record":
-                    await Playing();
-                    var (frames, folder) = await PlaySession.Record(RecordSpec(args));
-                    return Ok(new JObject { ["frames"] = frames, ["folder"] = folder, ["encode"] = $"ffmpeg -framerate {I_(args, "fps", 30)} -i \"{folder}/%05d.png\" -c:v libx264 -pix_fmt yuv420p -crf 16 out.mp4" });
+                    NotRunning();
+                    await Playing(started);
+                    _playRun = RecordResultJson(RecordSpec(args));
+                    _playRunKind = "recording";
+                    return await FollowPlay(started, CallSeconds);
                 case "walk":
                     var points = new List<ScenarioAutopilot.Waypoint>();
                     foreach (var point in (args["waypoints"] as JArray ?? new JArray()).OfType<JObject>())
@@ -1592,32 +1686,17 @@ namespace Scenario.Editor.Agent
                         points.Add(new ScenarioAutopilot.Waypoint { position = position, run = Json.Truthy(point["run"]), jump = Json.Truthy(point["jump"]), wait = F_(point, "wait", 0) });
                     }
                     if (points.Count == 0) throw new ToolError("Give waypoints.");
-                    await Playing();
-                    var walk = await PlaySession.Walk(new PlaySession.WalkSpec
+                    NotRunning();
+                    await Playing(started);
+                    _playRun = WalkResultJson(new PlaySession.WalkSpec
                     {
                         Player = S_(args, "player"),
                         Points = points,
                         Timeout = Math.Max(5, F_(args, "timeout", 90)),
                         Record = B_(args, "record", false) ? RecordSpec(args) : null,
                     });
-                    var reached = walk.ReachedAt.Count(t => t >= 0);
-                    var data = new JObject
-                    {
-                        ["reached"] = new JArray(walk.ReachedAt.Select((t, i) => new JObject { ["waypoint"] = i + 1, ["seconds"] = t >= 0 ? Math.Round(t, 1) : (JToken)"given up (stuck)" })),
-                        ["falls"] = walk.Falls,
-                        ["jumps"] = walk.Jumps,
-                        ["seconds"] = Math.Round(walk.Seconds, 1),
-                        ["longest_stuck"] = Math.Round(walk.LongestStuck, 1),
-                        ["start"] = V(walk.Start),
-                        ["end"] = V(walk.End),
-                        ["summary"] = $"Reached {reached} of {points.Count} points in {walk.Seconds:0.0} s" + (walk.Falls > 0 ? $", fell {walk.Falls} time(s)" : ", no falls") + (walk.TimedOut ? ", timed out." : "."),
-                    };
-                    if (walk.Folder.Length > 0)
-                    {
-                        data["frames"] = walk.Frames;
-                        data["folder"] = walk.Folder;
-                    }
-                    return Ok(data);
+                    _playRunKind = "walk";
+                    return await FollowPlay(started, CallSeconds);
                 default:
                     throw new ToolError("action is start, stop, status, walk or record.");
             }

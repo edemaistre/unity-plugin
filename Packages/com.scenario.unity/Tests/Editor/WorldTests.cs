@@ -395,5 +395,101 @@ namespace Scenario.Editor.Tests
             Assert.AreEqual(enabled, EditorSettings.enterPlayModeOptionsEnabled);
             Directory.Delete(frames, true);
         }
+
+        [UnityTest]
+        public IEnumerator Player_CountsALongDropAsAFall()
+        {
+            Floor();
+            var camera = new GameObject("Main Camera") { tag = "MainCamera" };
+            camera.AddComponent<Camera>();
+            _made.Add(camera);
+            Hero(out var walk, out var idle, out var jump);
+            Playable.Make(new Playable.Spec { Character = "Hero", Walk = walk, Idle = idle, Jump = jump });
+            var start = PlaySession.Start();
+            yield return Wait(start);
+            var player = Object.FindFirstObjectByType<ScenarioPlayer>();
+            Assert.AreEqual(0f, player.GetComponent<CharacterController>().minMoveDistance, "small steps at high frame rates still move");
+
+            var body = player.GetComponent<CharacterController>();
+            body.enabled = false;
+            player.transform.position += Vector3.up * 8;
+            body.enabled = true;
+            yield return null;
+            yield return null;
+            var until = EditorApplication.timeSinceStartup + 10;
+            while (!player.Grounded && EditorApplication.timeSinceStartup < until) yield return null;
+            yield return null;
+            Assert.IsTrue(player.Grounded, "landed");
+            Assert.AreEqual(1, player.Falls, "an 8 m drop is a fall");
+            Assert.AreEqual(0, player.Jumps);
+
+            var stop = PlaySession.Stop();
+            yield return Wait(stop);
+        }
+
+        static Task<JObject> PlayCall(JObject arguments) => AgentTools.Call("play", arguments, new AgentTools.Context());
+
+        static JObject Route() => new JObject
+        {
+            ["action"] = "walk",
+            ["waypoints"] = new JArray(new JObject { ["position"] = new JArray(0, 0, 6) }, new JObject { ["position"] = new JArray(0, 0, 0) }),
+        };
+
+        [UnityTest]
+        public IEnumerator PlayTool_AnswersWithinItsTime_ThenStatusReturnsTheWalk()
+        {
+            Floor();
+            var camera = new GameObject("Main Camera") { tag = "MainCamera" };
+            camera.AddComponent<Camera>();
+            _made.Add(camera);
+            Hero(out var walk, out var idle, out var jump);
+            Playable.Make(new Playable.Spec { Character = "Hero", Walk = walk, Idle = idle, Jump = jump });
+            var start = PlaySession.Start();
+            yield return Wait(start);
+            Assert.IsTrue(start.Result, "entered Play mode");
+
+            var budget = AgentTools.CallSeconds;
+            AgentTools.CallSeconds = 1;
+            try
+            {
+                // About 10 s of walking, against a 1 s call: the call answers while the walk goes on.
+                var walkCall = PlayCall(Route());
+                yield return Wait(walkCall, 30);
+                Assert.IsNull(walkCall.Result["isError"], TextOf(walkCall.Result));
+                var answer = JObject.Parse(TextOf(walkCall.Result));
+                Assert.AreEqual("walk", (string)answer["running"]);
+                StringAssert.Contains("status", (string)answer["next"]);
+                Assert.AreEqual(2, (int)answer["walk"]["of"]);
+
+                var second = PlayCall(Route());
+                yield return Wait(second, 30);
+                Assert.IsTrue((bool)second.Result["isError"], "one walk at a time");
+
+                JObject result = null;
+                for (var i = 0; i < 60 && result == null; i++)
+                {
+                    var status = PlayCall(new JObject { ["action"] = "status", ["wait_seconds"] = 5 });
+                    yield return Wait(status, 30);
+                    var data = JObject.Parse(TextOf(status.Result));
+                    if (data["reached"] != null) result = data;
+                }
+                Assert.IsNotNull(result, "status returned the walk's result");
+                Assert.AreEqual(2, ((JArray)result["reached"]).Count);
+                Assert.IsTrue(((JArray)result["reached"]).All(r => r["seconds"].Type != JTokenType.String), result.ToString());
+                Assert.AreEqual(0, (int)result["falls"]);
+
+                var after = PlayCall(new JObject { ["action"] = "status" });
+                yield return Wait(after, 30);
+                Assert.IsNull(JObject.Parse(TextOf(after.Result))["running"], "the result is returned once");
+            }
+            finally
+            {
+                AgentTools.CallSeconds = budget;
+            }
+
+            var stop = PlayCall(new JObject { ["action"] = "stop" });
+            yield return Wait(stop);
+            Assert.IsFalse(EditorApplication.isPlaying);
+        }
     }
 }

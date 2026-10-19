@@ -43,7 +43,7 @@ Costs are in Creative Units (CU).
 | audio | AudioClip on a new AudioSource | on the target's AudioSource (added if missing) |
 | video | VideoClip on a new screen quad | on the target's VideoPlayer (added if missing) |
 
-The result has `files` (Unity asset paths), `placed` (hierarchy paths), `asset_ids` (Scenario ids, reusable as inputs), `job_id`, `quoted_cu` and `charged_cu`. `place: false` imports without touching the scene. If `next` says the job is still running, call `jobs` with `local_id` and `wait_seconds`.
+The result has `files` (Unity asset paths), `placed` (hierarchy paths), `asset_ids` (Scenario ids, reusable as inputs), `job_id`, `quoted_cu` and `charged_cu`. `place: false` imports without touching the scene. No call blocks longer than 45 s: 3D, video and long audio usually answer with `next` (still running). The job keeps going, imports and places itself; call `jobs` with `local_id` and `wait_seconds` until it is done, and never generate it again. For a batch, send each request with `wait: false`, then follow them with `jobs`.
 
 File inputs (reference images, a start frame, a 3D model, audio) take a Scenario asset id or a Unity asset path; Unity files are uploaded once, free.
 
@@ -95,7 +95,7 @@ From one prompt to a world a player can walk in:
 2. Generate the set pieces, then `object_set` with `height` (meters) and `ground: true` to size each one and sit it on the terrain. Typical heights: a person 1.8, a door 2.2, a house 6 to 9, a pine 8 to 14, a rock 0.5 to 2.
 3. `scatter` repeats a model on the ground (`on`: the terrain), with a `height` range, `keep_clear` zones around paths and buildings, and colliders.
 4. A character: generate it, rig it, animate idle, walk, run and jump (`motions_find` for library ids), then `make_playable` with those results. It builds the controller, sizes the character, matches speeds to the clips and sets up the follow camera.
-5. `play` with `action: "walk"` and waypoints (`run`, `jump`, `wait`) to playtest: it reports the points reached, falls and jumps. `play` with `action: "stop"` before editing again; edits made in Play mode are lost. `record: true` (or `action: "record"`) writes PNG frames of the main camera at a fixed frame rate.
+5. `play` with `action: "walk"` and waypoints (`run`, `jump`, `wait`) to playtest: it reports the points reached, falls (a drop longer than 4 m counts) and jumps. A walk longer than the call keeps going in Unity: the answer says `running`, and `play` with `action: "status"` and `wait_seconds` returns the result when it ends. `play` with `action: "stop"` before editing again; edits made in Play mode are lost. `record: true` (or `action: "record"`) writes PNG frames of the main camera at a fixed frame rate.
 6. `scene_save`.
 
 ## Check your work

@@ -28,6 +28,7 @@ namespace Scenario
         [Tooltip("Bone kept over the character's feet, so clips that travel play in place (path under the Animator).")]
         public string inPlaceBone = "";
         [Tooltip("Below this height the character is put back at its start.")] public float fallLimit = -50f;
+        [Tooltip("A drop longer than this, in meters, counts as a fall in playtests.")] public float fallDistance = 4f;
         [Tooltip("Played at each step while moving on the ground: one footstep, or a longer recording sliced into steps.")] public AudioClip footstep;
         [Range(0, 1)] public float footstepVolume = 0.6f;
 
@@ -40,7 +41,7 @@ namespace Scenario
 
         public bool Grounded => _controller != null && _controller.isGrounded;
         public float PlanarSpeed { get; private set; }
-        /// <summary>How many times the character fell below fallLimit and was put back.</summary>
+        /// <summary>How many times the character dropped further than fallDistance, or fell below fallLimit and was put back.</summary>
         public int Falls { get; private set; }
         public int Jumps { get; private set; }
 
@@ -57,6 +58,14 @@ namespace Scenario
         AudioSource _steps;
         float _stepTimer;
         float _stepStop;
+        bool _wasGrounded = true;
+        float _airTop;
+
+        void Reset()
+        {
+            // At high frame rates a step is under the default 1 mm minimum and the controller would not move.
+            GetComponent<CharacterController>().minMoveDistance = 0f;
+        }
 
         void Awake()
         {
@@ -107,6 +116,7 @@ namespace Scenario
             var moved = transform.position - before;
             moved.y = 0;
             PlanarSpeed = Time.deltaTime > 0 ? moved.magnitude / Time.deltaTime : 0;
+            CountDrop();
 
             if (animator != null)
             {
@@ -121,6 +131,15 @@ namespace Scenario
                 Falls++;
                 Respawn();
             }
+        }
+
+        void CountDrop()
+        {
+            var grounded = _controller.isGrounded;
+            var y = transform.position.y;
+            if (!grounded) _airTop = _wasGrounded ? y : Mathf.Max(_airTop, y);
+            else if (!_wasGrounded && _airTop - y > fallDistance) Falls++;
+            _wasGrounded = grounded;
         }
 
         void Footsteps()
@@ -177,6 +196,7 @@ namespace Scenario
             transform.SetPositionAndRotation(_start, _startRotation);
             _controller.enabled = true;
             _vertical = 0;
+            _wasGrounded = true;
         }
     }
 }
