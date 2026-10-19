@@ -153,8 +153,8 @@ For each client, **Copy setup** copies what to paste:
 
 Permissions:
 
-- **Approve paid calls up to (CU)**: 20 by default, per call. 0 asks every time.
-- **Session budget (CU)**: 300 by default, since Unity started.
+- **Approve paid calls up to (CU)**: 80 by default, per call. 0 asks every time.
+- **Session budget (CU)**: 1,200 by default, since Unity started.
 - Anything above either waits for **Approve** or **Deny** in the Agent view, and is refused after two minutes without an answer.
 - **Agents can edit the scene** on or off.
 

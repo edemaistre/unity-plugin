@@ -53,8 +53,8 @@ namespace Scenario.Editor
 
         public bool AgentEnabled;
         public int AgentPort = 8791;
-        public int AgentAutoApproveCu = 20;
-        public int AgentSessionBudgetCu = 300;
+        public int AgentAutoApproveCu = 80;
+        public int AgentSessionBudgetCu = 1200;
         public bool AgentCanEditScene = true;
 
         public string ModelFor(string outputType)

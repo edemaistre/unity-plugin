@@ -196,7 +196,7 @@ The agent gets three sets of tools:
 - **Scene**: inspect the hierarchy, create and change objects and components, size them in meters and sit them on the ground, assign materials, set the skybox, save, read the console, and capture the Scene view or the main camera as an image it can look at.
 - **World**: build a terrain from a generated heightmap with ground materials painted by height and slope, scatter models on it with colliders, turn a rigged and animated character into a third-person player with a follow camera, and playtest in Play mode (the character walks, runs and jumps through waypoints; the result says what it reached and whether it fell) or record frames.
 
-Every scene edit is one Undo step. A paid call above the per-call limit (20 CU by default) or beyond the session budget (300 CU) waits for **Approve** in the window. The activity log lists every call.
+Every scene edit is one Undo step. A paid call above the per-call limit (80 CU by default) or beyond the session budget (1,200 CU) waits for **Approve** in the window. The activity log lists every call.
 
 Example, tested with Claude Code: *"Check that you are signed in, find a sword attack in the motion library, list three image-to-3D models, price a barrel prop, add a cube to the scene and show me the Scene view."* It ran the six steps in 17 seconds without spending. The barrel's price, 120 CU, is above the auto-approve limit, so generating it would wait for approval in Unity.
 
