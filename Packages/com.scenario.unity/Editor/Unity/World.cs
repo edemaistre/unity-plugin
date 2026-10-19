@@ -309,6 +309,8 @@ namespace Scenario.Editor
             /// <summary>Most degrees a copy leans to follow the ground.</summary>
             public float Tilt;
             public float MaxSlope = 35f;
+            /// <summary>Skips ground flatter than this, degrees: with Tilt, dresses cliff faces.</summary>
+            public float MinSlope;
             /// <summary>Meters between copies; 0 picks 80% of a copy's footprint.</summary>
             public float MinDistance;
             public List<(Vector2 center, float radius)> KeepClear = new List<(Vector2, float)>();
@@ -322,7 +324,7 @@ namespace Scenario.Editor
         {
             public GameObject Group;
             public int Placed;
-            public int SkippedSlope, SkippedClear, SkippedNoGround, SkippedCrowded;
+            public int SkippedSlope, SkippedFlat, SkippedClear, SkippedNoGround, SkippedCrowded;
         }
 
         public static ScatterResult Scatter(ScatterSpec spec)
@@ -373,6 +375,11 @@ namespace Scenario.Editor
                     if (slope > spec.MaxSlope)
                     {
                         result.SkippedSlope++;
+                        continue;
+                    }
+                    if (slope < spec.MinSlope)
+                    {
+                        result.SkippedFlat++;
                         continue;
                     }
 
@@ -427,10 +434,14 @@ namespace Scenario.Editor
             return Object.Instantiate(template);
         }
 
-        static void AddColliders(GameObject go, string kind)
+        /// <summary>
+        /// Gives an object collision when none of its parts has any: one box around it, or a mesh collider
+        /// on each mesh. Returns how many colliders were added.
+        /// </summary>
+        public static int AddColliders(GameObject go, string kind)
         {
-            if (kind == "none") return;
-            if (go.GetComponentInChildren<Collider>() != null) return;
+            if (kind == "none") return 0;
+            if (go.GetComponentInChildren<Collider>() != null) return 0;
             if (kind == "box")
             {
                 var bounds = BoundsOf(go);
@@ -438,14 +449,17 @@ namespace Scenario.Editor
                 box.center = go.transform.InverseTransformPoint(bounds.center);
                 var scale = go.transform.lossyScale;
                 box.size = new Vector3(bounds.size.x / Mathf.Abs(scale.x), bounds.size.y / Mathf.Abs(scale.y), bounds.size.z / Mathf.Abs(scale.z));
-                return;
+                return 1;
             }
+            var added = 0;
             foreach (var filter in go.GetComponentsInChildren<MeshFilter>())
             {
                 if (filter.sharedMesh == null) continue;
                 var collider = Undo.AddComponent<MeshCollider>(filter.gameObject);
                 collider.sharedMesh = filter.sharedMesh;
+                added++;
             }
+            return added;
         }
 
         // --- Ground and size ---------------------------------------------------------------

@@ -236,6 +236,94 @@ namespace Scenario.Editor.Tests
             StringAssert.Contains("No object", TextOf(missing));
         }
 
+        GameObject Slab(string name, Vector3 center, Vector3 size, float roll = 0)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetPositionAndRotation(center, Quaternion.Euler(0, 0, roll));
+            go.transform.localScale = size;
+            _made.Add(go);
+            return go;
+        }
+
+        [Test]
+        public void Scatter_MinSlope_DressesOnlyTheSteepGround()
+        {
+            // Flat ground west of x = 0, a 50 degree cliff face east of it.
+            Slab("Floor", new Vector3(-10, -0.5f, 0), new Vector3(20, 1, 20));
+            Slab("Cliff", new Vector3(10, 0, 0), new Vector3(20, 1, 20), 50);
+            Slab("Boulder", new Vector3(1000, 0, 1000), new Vector3(0.6f, 0.6f, 0.6f));
+            Physics.SyncTransforms();
+            var result = Call("scatter", new JObject
+            {
+                ["source"] = "Boulder",
+                ["count"] = 12,
+                ["area"] = new JArray(36, 16),
+                ["min_slope"] = 30,
+                ["max_slope"] = 70,
+                ["tilt"] = 45,
+                ["name"] = "Cliff Rocks",
+            });
+            Assert.IsNull(result["isError"], TextOf(result));
+            var data = JObject.Parse(TextOf(result));
+            _made.Add(Placer.FindByPath("Cliff Rocks"));
+            Assert.Greater((int)data["placed"], 0);
+            Assert.Greater((int)data["rejected_spots"]["too_flat"], 0, "spots on the floor are turned down");
+            foreach (Transform rock in Placer.FindByPath("Cliff Rocks").transform)
+            {
+                Assert.Greater(rock.position.x, 2f, rock.name + " is on the cliff");
+                Assert.Greater(Vector3.Angle(rock.up, Vector3.up), 30f, rock.name + " leans with the cliff");
+            }
+        }
+
+        // --- Set-piece collision -------------------------------------------------------------
+
+        /// <summary>A generated set piece: a root with two meshes and no colliders, as models import.</summary>
+        GameObject SetPiece(string name, Vector3 at)
+        {
+            var root = new GameObject(name);
+            root.transform.position = at;
+            _made.Add(root);
+            foreach (var (part, offset, size) in new[] { ("Base", new Vector3(0, 0.5f, 0), new Vector3(6, 1, 6)), ("Column", new Vector3(2, 3, 2), new Vector3(1, 4, 1)) })
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Object.DestroyImmediate(go.GetComponent<Collider>());
+                go.name = part;
+                go.transform.SetParent(root.transform, false);
+                go.transform.localPosition = offset;
+                go.transform.localScale = size;
+            }
+            return root;
+        }
+
+        [Test]
+        public void ObjectSet_Collider_MakesASetPieceSolid_Once()
+        {
+            var temple = SetPiece("Temple", new Vector3(0, 0, 0));
+            var result = Call("object_set", new JObject { ["path"] = "Temple", ["collider"] = "mesh" });
+            Assert.IsNull(result["isError"], TextOf(result));
+            Assert.AreEqual(2, (int)JObject.Parse(TextOf(result))["colliders_added"]);
+            Assert.AreEqual(2, temple.GetComponentsInChildren<MeshCollider>().Length);
+            Physics.SyncTransforms();
+            Assert.IsTrue(Physics.Raycast(new Vector3(2, 20, 2), Vector3.down, out var hit, 50f));
+            Assert.AreEqual("Column", hit.collider.name, "a player can stand on the column top");
+            Assert.AreEqual(5f, hit.point.y, 0.01f);
+
+            var again = JObject.Parse(TextOf(Call("object_set", new JObject { ["path"] = "Temple", ["collider"] = "mesh" })));
+            Assert.AreEqual(0, (int)again["colliders_added"]);
+            StringAssert.Contains("already", (string)again["collider_note"]);
+            Assert.AreEqual(2, temple.GetComponentsInChildren<Collider>().Length, "not doubled");
+
+            var shrine = SetPiece("Shrine", new Vector3(20, 0, 0));
+            Assert.IsNull(Call("object_set", new JObject { ["path"] = "Shrine", ["collider"] = "box" })["isError"]);
+            var box = shrine.GetComponent<BoxCollider>();
+            Assert.IsNotNull(box, "one box on the root");
+            Assert.AreEqual(new Vector3(6, 5, 6), box.bounds.size);
+
+            var wrong = Call("object_set", new JObject { ["path"] = "Shrine", ["collider"] = "sphere" });
+            Assert.IsTrue((bool)wrong["isError"]);
+        }
+
         // --- Playable character ----------------------------------------------------------------
 
         /// <summary>
