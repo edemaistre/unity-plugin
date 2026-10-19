@@ -225,7 +225,7 @@ Debug.Log(string.Join(", ", result.Files)); // Unity asset paths
 - **Price first.** The button reads `Generate · 11 CU`, from a free price check of the exact request. Change anything and the price is checked again.
 - **One click, one paid request.** Each price is used once, and a paid request is never retried.
 - **Uncertain means Unknown.** If the connection drops while a paid request is being sent, the job is marked Unknown and the same request waits until it is matched on Scenario.
-- **Confirmation** above a threshold (100 CU by default, in Settings).
+- **Confirmation** above a threshold (1,000 CU by default, in Settings).
 - **Spending switch** in Settings, or `SCENARIO_NO_SPEND=1` for the whole editor. Price checks, browsing and imports still work.
 - Moderated requests show as Blocked and are never resent.
 

@@ -57,7 +57,7 @@ Meshy Animation's motion is picked by name from its library of about 650 motions
 
 ### Price and Generate
 
-The footer button reads `Generate · 11 CU`: a free price check of exactly this request. It updates when you change anything. It is disabled while the price is being checked, when the form is incomplete, or when spending is off. Above your confirmation threshold (100 CU by default) Unity asks before sending.
+The footer button reads `Generate · 11 CU`: a free price check of exactly this request. It updates when you change anything. It is disabled while the price is being checked, when the form is incomplete, or when spending is off. Above your confirmation threshold (1,000 CU by default) Unity asks before sending.
 
 **Place** decides whether the result is put in the scene or only imported. The line above the button says where it goes and what it will land on, for example "Places on Player (SpriteRenderer)".
 
