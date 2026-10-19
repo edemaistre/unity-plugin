@@ -4,8 +4,8 @@
 <h1 align="center">Scenario for Unity</h1>
 <p align="center">
   <!-- x-release-please-start-version -->
-  <img alt="Version 0.1.0"
-    src="https://img.shields.io/static/v1?label=version&message=0.1.0&color=black">
+  <img alt="Version 0.2.0"
+    src="https://img.shields.io/static/v1?label=version&message=0.2.0&color=black">
   <!-- x-release-please-end -->
   <img alt="Unity 6.0 and later" src="https://img.shields.io/badge/Unity-6.0%2B-black?logo=unity">
   <img alt="Render pipelines" src="https://img.shields.io/badge/pipelines-Built--in%20%C2%B7%20URP%20%C2%B7%20HDRP-555">
@@ -60,7 +60,7 @@ Unity 6.0 or later. Tested on Unity 6.3 (6000.3.21f1) on macOS, with URP and wit
    ```
    https://github.com/edemaistre/unity-plugin.git?path=/Packages/com.scenario.unity
    ```
-   Add `#unity-plugin-v0.1.0` at the end to pin a release. <!-- x-release-please-version --> The package pulls in glTFast (Unity's GLB importer) and Newtonsoft JSON.
+   Add `#unity-plugin-v0.2.0` at the end to pin a release. <!-- x-release-please-version --> The package pulls in glTFast (Unity's GLB importer) and Newtonsoft JSON.
 3. Open **Window > Scenario** (Alt+Shift+S).
 
 ## Sign in
