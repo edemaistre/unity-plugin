@@ -1,12 +1,17 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Scenario.Editor.Core;
+using UnityEditor;
+using UnityEngine.TestTools;
 
 namespace Scenario.Editor.Tests
 {
@@ -199,5 +204,71 @@ namespace Scenario.Editor.Tests
 
         static Dictionary<string, string> ParseQuery(string query)
             => query.TrimStart('?').Split('&').Select(p => p.Split('=')).ToDictionary(p => Uri.UnescapeDataString(p[0]), p => Uri.UnescapeDataString(p[1]));
+    }
+
+    /// <summary>
+    /// "Sign in with Scenario" through the service: the browser opens even when the network
+    /// answers on a worker thread, and Cancel always brings the sign-in panel back.
+    /// </summary>
+    public class BrowserSignInTests
+    {
+        /// <summary>Answers like the real network: later, on a worker thread.</summary>
+        sealed class WorkerThreadTransport : ITransport
+        {
+            readonly FakeMcp _inner;
+            public WorkerThreadTransport(FakeMcp inner) { _inner = inner; }
+
+            public async Task<HttpReply> SendAsync(HttpRequestSpec request, CancellationToken cancel = default)
+            {
+                await Task.Delay(50).ConfigureAwait(false);
+                return await _inner.SendAsync(request, cancel).ConfigureAwait(false);
+            }
+
+            public Task<HttpReply> DownloadAsync(string url, string destPath, double timeoutSeconds, IProgress<float> progress = null, CancellationToken cancel = default)
+                => _inner.DownloadAsync(url, destPath, timeoutSeconds, progress, cancel);
+
+            public Task Delay(double seconds, CancellationToken cancel = default) => _inner.Delay(seconds, cancel);
+        }
+
+        Action<string> _openUrl;
+
+        [SetUp]
+        public void SetUp() => _openUrl = ScenarioService.OpenUrl;
+
+        [TearDown]
+        public void TearDown()
+        {
+            ScenarioService.OpenUrl = _openUrl;
+            ScenarioService.ResetForTests();
+        }
+
+        [UnityTest]
+        public IEnumerator OpensTheBrowserFromTheMainThread_AndCancelBringsThePanelBack()
+        {
+            var server = new FakeMcp { Other = request => new HttpReply { Status = 201, Body = "{\"client_id\":\"client_new\"}" } };
+            var s = ScenarioService.UseForTests(new WorkerThreadTransport(server), TempDir.Make("signin"));
+            string opened = null;
+            var onMainThread = false;
+            ScenarioService.OpenUrl = url =>
+            {
+                opened = url;
+                onMainThread = MainThread.IsMainThread;
+            };
+
+            var signIn = s.SignInWithBrowser();
+            var until = EditorApplication.timeSinceStartup + 20;
+            while (opened == null && EditorApplication.timeSinceStartup < until) yield return null;
+            Assert.IsNotNull(opened, "the browser was asked to open");
+            Assert.IsTrue(onMainThread, "Unity opens URLs only from the main thread");
+            StringAssert.StartsWith("https://mcp.scenario.com/oauth/authorize?", opened);
+            Assert.AreEqual(SignInState.SigningIn, s.State);
+
+            s.CancelSignIn();
+            Assert.AreEqual(SignInState.SignedOut, s.State, "Cancel brings the panel back at once");
+            while (!signIn.IsCompleted && EditorApplication.timeSinceStartup < until) yield return null;
+            Assert.IsTrue(signIn.IsCompleted, "the sign-in ended");
+            Assert.AreEqual(SignInState.SignedOut, s.State);
+            Assert.AreEqual("", s.SignInError);
+        }
     }
 }
