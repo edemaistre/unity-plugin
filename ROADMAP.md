@@ -7,7 +7,7 @@ What comes after 0.1.0, roughly in order. Issues track the details.
 - **Video from a camera.** Record a camera clip (MediaEncoder) and send it to video-to-video models such as Seedance restyle.
 - **Humanoid retargeting.** Animations import as Generic clips on the character they were made for. Setting up a Humanoid avatar would let a motion made for one character play on another.
 - **Gaussian splat display.** Splats are saved as files; showing them needs a splat renderer package.
-- **Scene view overlay** with a quick prompt and the last results.
+- **Last results in the Scene view panel.** The panel has the selection's steps, scene actions and Ask; a quick prompt that generates from it, and the latest results, would follow.
 - **Generation history per asset**, beyond the Inspector header.
 - **Balance in the header** once the Scenario MCP exposes it to every credential type. Today the header shows the plan and what this editor spent today.
 - **Asset Store packaging.**

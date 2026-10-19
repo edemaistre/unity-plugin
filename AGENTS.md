@@ -46,12 +46,17 @@ In `Packages/com.scenario.unity/Editor/` (assembly `Scenario.Editor`):
   capture, provenance and the Inspector header, context menus, main-thread
   dispatcher, settings, `ScenarioApi`.
 - `UI/`: `ScenarioWindow` (shell), `Views/`, `Overlays/` (model browser,
-  command palette), `Components/`, `Styles/Scenario.uss`, `Icons/` (built by
+  command palette, the Scenario panel in the Scene view), `Components/` (the
+  Ask box among them), `Styles/Scenario.uss`, `Icons/` (built by
   `tools/build_icons.py`).
 - `Agent/`: `AgentServer` (HTTP on 127.0.0.1, token, Origin and Host checks,
-  JSON-RPC), `AgentTools` (tool registry), `ClientSetup` (setup lines).
+  JSON-RPC), `AgentTools` (tool registry), `ClientSetup` (setup lines), `Ask`
+  and `ClaudeCode` (a request from Unity run by the local Claude Code through
+  the bridge).
 - `Unity/World.cs` (terrain from a heightmap, painted layers, scatter, sizing
-  and grounding) and `Unity/Playable.cs` (`make_playable`, and `PlaySession`:
+  and grounding, ground sampling, walkways on generated bridges, props along a
+  path), `Unity/Atmosphere.cs` (sun, fog, ambient and a URP volume per mood),
+  `Unity/SceneActions.cs` (what the panel offers for the selection) and `Unity/Playable.cs` (`make_playable`, and `PlaySession`:
   Play mode without a domain reload so the bridge keeps serving, playtest walks,
   frame recording, the user's Enter Play Mode setting restored).
 

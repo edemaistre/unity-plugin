@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -68,8 +67,8 @@ namespace Scenario.Editor.Agent
         public static (bool ok, string output) Configure(string id)
         {
             if (id != "claude") return (false, "Copy the setup into this client instead.");
-            var claude = FindExecutable("claude");
-            if (claude == null) return (false, "the claude command was not found. Install Claude Code, or copy the setup.");
+            var claude = ClaudeCode.Find();
+            if (claude == null) return (false, "the claude command was not found. Install Claude Code, set its path in Settings, or copy the setup.");
             var project = Path.GetFullPath(".");
             // An older entry with a stale token would shadow the new one.
             Run(claude, $"mcp remove {ServerName} -s local", project);
@@ -88,6 +87,8 @@ namespace Scenario.Editor.Agent
                     RedirectStandardError = true,
                     CreateNoWindow = true,
                 };
+                // An npm install of claude is a node script: give it the folders a terminal would have.
+                info.EnvironmentVariables["PATH"] = ClaudeCode.ChildPath(file);
                 using (var process = Process.Start(info))
                 {
                     if (process == null) return (false, "could not start " + file);
@@ -104,27 +105,6 @@ namespace Scenario.Editor.Agent
             {
                 return (false, e.Message);
             }
-        }
-
-        /// <summary>Editors started from the Dock or Hub do not inherit the shell PATH: look in the usual places too.</summary>
-        static string FindExecutable(string name)
-        {
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var windows = Environment.OSVersion.Platform == PlatformID.Win32NT;
-            var names = windows ? new[] { name + ".exe", name + ".cmd" } : new[] { name };
-            var folders = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator).ToList();
-            folders.AddRange(new[]
-            {
-                Path.Combine(home, ".local", "bin"), Path.Combine(home, ".claude", "local"), "/opt/homebrew/bin", "/usr/local/bin",
-                Path.Combine(home, ".npm-global", "bin"), Path.Combine(home, "AppData", "Roaming", "npm"),
-            });
-            foreach (var folder in folders.Where(f => !string.IsNullOrEmpty(f)))
-                foreach (var candidate in names)
-                {
-                    var path = Path.Combine(folder, candidate);
-                    if (File.Exists(path)) return path;
-                }
-            return null;
         }
     }
 }

@@ -49,8 +49,9 @@ namespace Scenario.Editor.Agent
             "No call blocks longer than 45 s: slow work (3D, video, audio, a long playtest) answers \"still running\" and names the call that follows it (jobs or play status, with wait_seconds). " +
             "For a batch, call generate with wait false for each request, then jobs with wait_seconds. " +
             "Scene objects are addressed by hierarchy path (Root/Child). Each scene edit is one Undo step the user can revert. " +
-            "Walkable worlds: terrain_create (from a generated heightmap image and generated materials), then generated models sized and grounded with object_set (height, ground) or scattered with scatter, " +
-            "then a rigged and animated character turned into a player with make_playable, then play (walk) to playtest it.";
+            "Walkable worlds: terrain_create (from a generated heightmap image and generated materials), ground_height to measure it, then generated models sized and grounded with object_set (height, ground), scattered with scatter or lined up with place_along, " +
+            "make_walkable on bridges, stairs and platforms, atmosphere for the light and mood, a rigged and animated character turned into a player with make_playable, then play (walk) to playtest it. " +
+            "Look at the result with capture_view (around for four angles at once) after each stage.";
 
         /// <summary>
         /// Longest a tool call blocks. MCP clients commonly give up on a call after 60 s, so slower work
@@ -202,6 +203,7 @@ namespace Scenario.Editor.Agent
                         ("capability", Str("txt2img, img2img, txt2video, img2video, video2video, txt23d, img23d, 3d23d, txt2audio, audio2audio, video2audio.")),
                         ("recommend_for_prompt", Str("A prompt: returns Scenario's ranked picks for it (free).")),
                         ("include_legacy", Bool("Include deprecated models.")),
+                        ("sort", Str("relevance (default) or newest: the most recently added models first.", "relevance", "newest")),
                         ("limit", Int("Max results, default 15."))),
                     Run = ModelsFind,
                 },
@@ -403,9 +405,13 @@ namespace Scenario.Editor.Agent
                 new Tool
                 {
                     Name = "capture_view", ReadOnly = true,
-                    Description = "Renders the Scene view, the main camera or a given camera and returns the image, so you can see the result. Optionally uploads it to Scenario as a reference.",
+                    Description = "Renders the Scene view, the main camera or a given camera and returns the image, so you can see the result. " +
+                                  "around gives four three-quarter views of an object or point in one 2 x 2 image (south-west, south-east, north-west, north-east); from and at give one view from any point. Optionally uploads it to Scenario as a reference.",
                     Schema = Schema(None, ("source", Str("scene_view, main_camera, or a camera's hierarchy path (default main_camera, then scene_view, then an overview of the open scenes).")),
-                        ("max_size", Int("Longest side in pixels, default 768.")), ("upload", Bool("Also upload to Scenario and return the asset id."))),
+                        ("around", new JObject { ["description"] = "Object path or [x, y, z]: four views around it in one image." }),
+                        ("from", Vec("Eye position [x, y, z] for a single view; a point under the terrain is raised to 1.7 m above it.")), ("at", new JObject { ["description"] = "What the view from looks at: object path or [x, y, z]." }),
+                        ("distance", Num("around: camera distance in meters, default to frame it.")), ("elevation", Num("around: degrees above the horizon, default 25.")),
+                        ("max_size", Int("Longest side in pixels, default 768 (1024 for around).")), ("upload", Bool("Also upload to Scenario and return the asset id."))),
                     Run = CaptureView,
                 },
                 new Tool
@@ -436,6 +442,60 @@ namespace Scenario.Editor.Agent
                         ("keep_clear", Objects("Zones to leave empty: {center: [x, z], radius}.")), ("collider", Str("mesh (default), box or none.", "mesh", "box", "none")),
                         ("seed", Int("Same seed, same layout.")), ("name", Str("Group object name."))),
                     Run = Scatter,
+                },
+                new Tool
+                {
+                    Name = "ground_height", ReadOnly = true,
+                    Description = "Measures the ground and changes nothing: height, slope and surface at points [x, z], or a profile along a line (from, to) with its steepest slope and biggest step. " +
+                                  "Use it before placing things: a ravine's depth and both rims for a bridge, heights for flat_areas, whether a path is walkable (slopes under 50 degrees, steps under the player's step height).",
+                    Schema = Schema(None, ("points", new JObject { ["type"] = "array", ["items"] = new JObject { ["type"] = "array", ["items"] = new JObject { ["type"] = "number" } }, ["description"] = "Points [x, z], up to 200." }),
+                        ("from", Pair("Line start [x, z].")), ("to", Pair("Line end [x, z].")), ("step", Num("Meters between line samples, default 1.")),
+                        ("on", Str("Only this object's surface (a terrain). Default: the highest collider."))),
+                    Run = GroundHeight,
+                },
+                new Tool
+                {
+                    Name = "make_walkable", EditsScene = true,
+                    Description = "Makes a generated bridge, ramp, stairs or platform walkable in one call: invisible colliders follow its deck with holes bridged and bumps smoothed, side rails keep the player on it, " +
+                                  "short ramps join each end to the ground beyond, and its own mesh colliders are turned off. Returns where the deck starts and ends and how each end meets the ground. Run it again after moving the object.",
+                    Schema = Schema(new[] { "target" }, ("target", Str("Hierarchy path of the bridge or platform.")),
+                        ("from", Pair("Walking line start [x, z]. Default: one end of the object's long side.")), ("to", Pair("Walking line end [x, z].")),
+                        ("width", Num("Walking width in meters. Default: measured on the deck.")), ("rails", Bool("Invisible side rails, default true.")),
+                        ("rail_height", Num("Meters, default 1.1.")), ("ramps", Bool("Ramps to the ground within 1.5 m of each end, default true.")),
+                        ("keep_colliders", Bool("Keep the object's own colliders on, default false."))),
+                    Run = MakeWalkable,
+                },
+                new Tool
+                {
+                    Name = "place_along", EditsScene = true,
+                    Description = "Places copies of a model at even spacing along a path, beside it or on it: lanterns or fence posts lining a trail, torches on a bridge, stepping stones. " +
+                                  "Copies sit on the ground (or a deck), face the path and get colliders; light adds a point light to each. Copies go under one group object.",
+                    Schema = Schema(new[] { "source", "path" }, ("source", Str("Prefab or model asset path, or a scene object to copy.")),
+                        ("path", new JObject { ["type"] = "array", ["items"] = new JObject { ["type"] = "array", ["items"] = new JObject { ["type"] = "number" } }, ["description"] = "Path points [x, z] in walking order, at least two." }),
+                        ("spacing", Num("Meters between copies along the path, default 6.")), ("offset", Num("Meters to the side of the path, default 2; 0 puts copies on it.")),
+                        ("side", Str("right, left, both or alternate (default), seen walking along the path.", "right", "left", "both", "alternate")),
+                        ("start", Num("Meters along the path before the first copy, default 0.")), ("height", Num("Height of each copy in meters. Omit to keep the source's size.")),
+                        ("face", Str("path (default: front turned to the path), along (front in the walking direction), random or keep.", "path", "along", "random", "keep")),
+                        ("on", Str("Ground object path: only its surface counts. Default: any collider.")), ("collider", Str("mesh (default), box or none.", "mesh", "box", "none")),
+                        ("max_slope", Num("Skip ground steeper than this, degrees, default 40.")), ("jitter", Num("Most meters each copy moves off its spot at random, default 0.")),
+                        ("light", Obj("A point light on each copy: {color (#RRGGBB or [r, g, b]), intensity (default 2), range (meters, default 8), at (share of the copy's height, default 0.75)}. {} for a warm default.")),
+                        ("seed", Int("Same seed, same layout.")), ("name", Str("Group object name."))),
+                    Run = PlaceAlong,
+                },
+                new Tool
+                {
+                    Name = "atmosphere", EditsScene = true,
+                    Description = "Sets the light and mood in one call. A preset (golden_hour, midday, overcast, misty_morning, sunset, night) sets the sun's angle, color and strength, fog and ambient light, " +
+                                  "and in URP a post-processing volume (tone mapping, exposure, contrast, saturation, warmth, bloom, vignette) that the scene's cameras render. Any value can be set alone or on top of a preset. Check it with capture_view.",
+                    Schema = Schema(None, ("preset", Str("Starting look.", Atmosphere.Presets.Keys.ToArray())),
+                        ("sun_elevation", Num("Degrees above the horizon.")), ("sun_azimuth", Num("Compass degrees the sunlight travels toward (0 is north, +z).")),
+                        ("sun_color", new JObject { ["description"] = "#RRGGBB or [r, g, b]." }), ("sun_intensity", Num("Sun strength, about 0.2 (moonlight) to 2 (hard sun).")),
+                        ("fog", Bool("Fog on or off.")), ("fog_density", Num("0.001 (clear air) to 0.03 (thick mist).")), ("fog_color", new JObject { ["description"] = "#RRGGBB or [r, g, b]." }),
+                        ("ambient_color", new JObject { ["description"] = "Flat ambient light, #RRGGBB or [r, g, b]. Default: from the skybox." }),
+                        ("exposure", Num("Post exposure in stops, -2 to 2.")), ("contrast", Num("-100 to 100.")), ("saturation", Num("-100 to 100.")),
+                        ("temperature", Num("-100 (cold) to 100 (warm).")), ("bloom", Num("Glow around bright lights, 0 to 2.")), ("vignette", Num("Darker corners, 0 to 1.")),
+                        ("post", Bool("Post-processing volume in URP, default true."))),
+                    Run = AtmosphereSet,
                 },
                 new Tool
                 {
@@ -542,14 +602,16 @@ namespace Scenario.Editor.Agent
                 return Ok(new JObject { ["capability"] = cap, ["rationale"] = result.Value["rationale"], ["ranked"] = result.Value["ranked"] });
             }
             if (S.Catalog.IsEmpty) await S.RefreshCatalog(false);
-            var models = S.Catalog.Search(new Catalog.Query
+            IEnumerable<ModelInfo> models = S.Catalog.Search(new Catalog.Query
             {
                 Text = S_(args, "query"),
                 OutputType = type,
                 Capability = capability,
                 ShowLegacy = B_(args, "include_legacy", false),
                 Favorites = ScenarioUserSettings.instance.Favorites,
-            }).Take(limit);
+            });
+            if (S_(args, "sort") == "newest") models = models.OrderByDescending(m => m.CreatedAt);
+            models = models.Take(limit);
             var list = new JArray(models.Select(m => new JObject
             {
                 ["id"] = m.Id,
@@ -561,6 +623,7 @@ namespace Scenario.Editor.Agent
                 ["featured"] = m.IsFeatured,
                 ["team_model"] = m.IsPrivate,
                 ["legacy"] = m.IsLegacy,
+                ["added"] = m.CreatedAt > 0 ? DateTimeOffset.FromUnixTimeSeconds((long)m.CreatedAt).ToString("yyyy-MM-dd") : null,
             }));
             var data = new JObject { ["models"] = list };
             if (type.Length > 0) data["quick_picks"] = new JArray(OutputTypes.Get(type).QuickPicks);
@@ -1403,12 +1466,44 @@ namespace Scenario.Editor.Agent
             }));
         }
 
+        /// <summary>A point given as [x, y, z] or a scene object's path, with the object's bounds.</summary>
+        static Bounds Region(JToken token, string key)
+        {
+            var point = Vec3(token);
+            if (point.HasValue) return new Bounds(point.Value, Vector3.one * 4f);
+            var path = token?.Type == JTokenType.String ? (string)token : "";
+            if (path.Length == 0) throw new ToolError($"{key} is an object path or [x, y, z].");
+            return World.BoundsOf(Find(path));
+        }
+
         static async Task<JObject> CaptureView(JObject args, Context context)
         {
             var source = S_(args, "source", "main_camera");
-            var size = Math.Max(128, Math.Min(2048, I_(args, "max_size", 768)));
+            var around = args["around"] != null;
+            var size = Math.Max(128, Math.Min(2048, I_(args, "max_size", around ? 1024 : 768)));
             string path;
-            if (source == "scene_view") path = Capture.SceneView(size) ?? Capture.Overview(size);
+            var data = new JObject();
+            if (around)
+            {
+                var elevation = F_(args, "elevation", 25);
+                path = Capture.Around(Region(args["around"], "around"), size, elevation, F_(args, "distance", 0));
+                data["views"] = "Top row from the south-west and south-east, bottom row from the north-west and north-east (+z is north).";
+            }
+            else if (args["from"] != null)
+            {
+                var eye = Vec3(args["from"]) ?? throw new ToolError("from is [x, y, z].");
+                var look = args["at"] != null ? Region(args["at"], "at").center : eye + Vector3.forward;
+                // A point under the terrain would show the world from below.
+                var ground = World.TerrainHeightAt(eye);
+                if (!float.IsNaN(ground) && eye.y < ground + 0.3f)
+                {
+                    eye.y = ground + 1.7f;
+                    data["note"] = $"from was under the terrain: raised to a player's eye, y = {eye.y:0.0}.";
+                }
+                data["from"] = V(eye);
+                path = Capture.From(eye, look, size);
+            }
+            else if (source == "scene_view") path = Capture.SceneView(size) ?? Capture.Overview(size);
             else if (source == "main_camera") path = Capture.MainCamera(size) ?? Capture.SceneView(size) ?? Capture.Overview(size);
             else
             {
@@ -1418,7 +1513,7 @@ namespace Scenario.Editor.Agent
             }
             if (path == null) throw new ToolError("Nothing to capture: the render failed.");
             var png = File.ReadAllBytes(path);
-            var data = new JObject { ["file"] = path };
+            data["file"] = path;
             if (B_(args, "upload", false))
             {
                 RequireReady();
@@ -1520,6 +1615,204 @@ namespace Scenario.Editor.Agent
             if (result.SkippedNoGround > 0) skipped["no_ground"] = result.SkippedNoGround;
             if (skipped.HasValues) data["rejected_spots"] = skipped;
             if (result.Placed < spec.Count) data["note"] = $"Only {result.Placed} of {spec.Count} fit: widen the area, lower min_distance or raise max_slope.";
+            return Task.FromResult(Ok(data));
+        }
+
+        static IEnumerable<Vector2> Points(JToken token, string key)
+        {
+            if (!(token is JArray list)) throw new ToolError($"{key} is a list of [x, z] points.");
+            return list.Select(p => Vec2(p) ?? throw new ToolError($"Each point in {key} is [x, z]."));
+        }
+
+        static GameObject FindOptional(string path) => path.Length > 0 ? Find(path) : null;
+
+        static JObject SampleJson(World.Sample sample)
+        {
+            var o = new JObject { ["at"] = new JArray(Math.Round(sample.At.x, 2), Math.Round(sample.At.y, 2)) };
+            if (!sample.Found)
+            {
+                o["height"] = null;
+                o["note"] = "no ground";
+                return o;
+            }
+            o["height"] = Math.Round(sample.Height, 2);
+            o["slope"] = Math.Round(sample.Slope, 1);
+            o["surface"] = PathOf(sample.Surface);
+            return o;
+        }
+
+        static Task<JObject> GroundHeight(JObject args, Context context)
+        {
+            var on = FindOptional(S_(args, "on"));
+            var data = new JObject();
+            if (args["points"] != null)
+            {
+                var points = Points(args["points"], "points").Take(200).ToList();
+                data["points"] = new JArray(World.Measure(points, on).Select(SampleJson));
+            }
+            if (args["from"] != null || args["to"] != null)
+            {
+                var from = Vec2(args["from"]) ?? throw new ToolError("from is [x, z].");
+                var to = Vec2(args["to"]) ?? throw new ToolError("to is [x, z].");
+                var length = Vector2.Distance(from, to);
+                var step = Math.Max(0.1f, F_(args, "step", 1));
+                if (length / step > 400) step = length / 400;
+                var count = Mathf.Max(2, Mathf.CeilToInt(length / step) + 1);
+                var points = Enumerable.Range(0, count).Select(i => Vector2.Lerp(from, to, count == 1 ? 0 : i / (float)(count - 1))).ToList();
+                var samples = World.Measure(points, on);
+                var found = samples.Where(x => x.Found).ToList();
+                var line = new JObject
+                {
+                    ["from"] = new JArray(from.x, from.y),
+                    ["to"] = new JArray(to.x, to.y),
+                    ["length"] = Math.Round(length, 2),
+                    ["step"] = Math.Round(length / (count - 1), 2),
+                    ["heights"] = new JArray(samples.Select(x => x.Found ? (JToken)Math.Round(x.Height, 2) : JValue.CreateNull())),
+                };
+                if (found.Count > 0)
+                {
+                    line["lowest"] = Math.Round(found.Min(x => x.Height), 2);
+                    line["highest"] = Math.Round(found.Max(x => x.Height), 2);
+                }
+                float steepest = 0, biggest = 0;
+                for (var i = 1; i < samples.Count; i++)
+                {
+                    if (!samples[i].Found || !samples[i - 1].Found) continue;
+                    var rise = Mathf.Abs(samples[i].Height - samples[i - 1].Height);
+                    var run = Vector2.Distance(samples[i].At, samples[i - 1].At);
+                    biggest = Mathf.Max(biggest, rise);
+                    steepest = Mathf.Max(steepest, Mathf.Atan2(rise, run) * Mathf.Rad2Deg);
+                }
+                line["steepest_slope"] = Math.Round(steepest, 1);
+                line["biggest_step"] = Math.Round(biggest, 2);
+                var missing = samples.Count(x => !x.Found);
+                if (missing > 0) line["no_ground"] = missing;
+                data["line"] = line;
+            }
+            if (!data.HasValues) throw new ToolError("Give points, or from and to.");
+            return Task.FromResult(Ok(data));
+        }
+
+        static Task<JObject> MakeWalkable(JObject args, Context context)
+        {
+            var result = World.MakeWalkable(new World.WalkableSpec
+            {
+                Target = Need(args, "target"),
+                From = Vec2(args["from"]),
+                To = Vec2(args["to"]),
+                Width = Math.Max(0, F_(args, "width", 0)),
+                Rails = B_(args, "rails", true),
+                RailHeight = Mathf.Clamp(F_(args, "rail_height", 1.1f), 0.3f, 3f),
+                Ramps = B_(args, "ramps", true),
+                KeepColliders = B_(args, "keep_colliders", false),
+            });
+            JObject End(Vector3 point, float ground, bool ramp)
+            {
+                var o = new JObject { ["deck"] = V(point) };
+                if (!float.IsNaN(ground)) o["ground_beyond"] = Math.Round(ground, 2);
+                o["joined"] = ramp ? "ramp" : !float.IsNaN(ground) && Mathf.Abs(point.y - ground) < 0.3f ? "level" : "no";
+                return o;
+            }
+            var data = new JObject
+            {
+                ["walkway"] = PathOf(result.Walkway),
+                ["length"] = Math.Round(result.Length, 2),
+                ["width"] = Math.Round(result.Width, 2),
+                ["start"] = End(result.Start, result.StartGround, result.StartRamp),
+                ["end"] = End(result.End, result.EndGround, result.EndRamp),
+                ["holes_bridged"] = result.Holes,
+                ["bumps_smoothed"] = result.Bumps,
+                ["own_colliders_off"] = result.CollidersOff,
+                ["next"] = $"Playtest across it: play walk with waypoints at {V(result.Start)} and {V(result.End)}.",
+            };
+            if (result.Notes.Count > 0) data["notes"] = new JArray(result.Notes);
+            return Task.FromResult(Ok(data));
+        }
+
+        static Task<JObject> PlaceAlong(JObject args, Context context)
+        {
+            var spec = new World.AlongSpec
+            {
+                Source = Need(args, "source"),
+                Path = Points(args["path"], "path").ToList(),
+                Spacing = F_(args, "spacing", 6),
+                Offset = Math.Max(0, F_(args, "offset", 2)),
+                Side = S_(args, "side", "alternate"),
+                Start = Math.Max(0, F_(args, "start", 0)),
+                Height = Math.Max(0, F_(args, "height", 0)),
+                Face = S_(args, "face", "path"),
+                On = S_(args, "on"),
+                Collider = S_(args, "collider", "mesh"),
+                MaxSlope = F_(args, "max_slope", 40),
+                Jitter = Math.Max(0, F_(args, "jitter", 0)),
+                Seed = I_(args, "seed", 1),
+                Group = S_(args, "name"),
+            };
+            if (args["light"] is JObject light)
+            {
+                spec.Light = new World.PointLight
+                {
+                    Intensity = F_(light, "intensity", 2),
+                    Range = F_(light, "range", 8),
+                    At = Mathf.Clamp01(F_(light, "at", 0.75f)),
+                };
+                if (light["color"] != null) spec.Light.Color = ToColor(light["color"]);
+            }
+            if (spec.Path.Count > 1000) throw new ToolError("path has more than 1,000 points.");
+            var result = World.PlaceAlong(spec);
+            var data = new JObject
+            {
+                ["group"] = PathOf(result.Group),
+                ["placed"] = result.Placed,
+                ["path_length"] = Math.Round(result.PathLength, 2),
+                ["positions"] = new JArray(result.Positions.Select(V)),
+            };
+            var skipped = new JObject();
+            if (result.SkippedSlope > 0) skipped["too_steep"] = result.SkippedSlope;
+            if (result.SkippedNoGround > 0) skipped["no_ground"] = result.SkippedNoGround;
+            if (skipped.HasValues) data["rejected_spots"] = skipped;
+            return Task.FromResult(Ok(data));
+        }
+
+        static Task<JObject> AtmosphereSet(JObject args, Context context)
+        {
+            float? Opt(string key) => args[key] == null ? (float?)null : (float)Json.ToDouble(args[key]);
+            Color? Tint(string key) => args[key] == null ? (Color?)null : ToColor(args[key]);
+            var result = Atmosphere.Apply(new Atmosphere.Spec
+            {
+                Preset = S_(args, "preset"),
+                SunElevation = Opt("sun_elevation"),
+                SunAzimuth = Opt("sun_azimuth"),
+                SunIntensity = Opt("sun_intensity"),
+                SunColor = Tint("sun_color"),
+                Fog = args["fog"] == null ? (bool?)null : Json.Truthy(args["fog"]),
+                FogDensity = Opt("fog_density"),
+                FogColor = Tint("fog_color"),
+                Ambient = Tint("ambient_color"),
+                Exposure = Opt("exposure"),
+                Contrast = Opt("contrast"),
+                Saturation = Opt("saturation"),
+                Temperature = Opt("temperature"),
+                Bloom = Opt("bloom"),
+                Vignette = Opt("vignette"),
+                Post = B_(args, "post", true),
+            });
+            var sun = result.Sun.transform.eulerAngles;
+            var data = new JObject
+            {
+                ["sun"] = PathOf(result.Sun.gameObject),
+                ["sun_elevation"] = Math.Round(sun.x > 180 ? sun.x - 360 : sun.x, 1),
+                ["sun_azimuth"] = Math.Round(sun.y, 1),
+                ["fog"] = RenderSettings.fog ? (JToken)Math.Round(RenderSettings.fogDensity, 4) : "off",
+                ["ambient"] = RenderSettings.ambientMode.ToString().ToLowerInvariant(),
+            };
+            if (result.Volume != null)
+            {
+                data["volume"] = PathOf(result.Volume);
+                data["profile"] = result.Profile;
+            }
+            if (result.Notes.Count > 0) data["notes"] = new JArray(result.Notes);
+            data["next"] = "capture_view (around or from) to check the look.";
             return Task.FromResult(Ok(data));
         }
 

@@ -151,7 +151,7 @@ Motion gathers the animation models: a motion from a prompt (Cartwheel, Uthana, 
 
 ## Find a model
 
-**Suggest** sends your prompt to Scenario's recommender and ranks the best models for the type. **Change** opens the model browser: search, favorites, your team's trained models, legacy models on demand. **Ctrl+K** (Cmd+K) opens a command palette over models, views and actions.
+**Suggest** sends your prompt to Scenario's recommender and ranks the best models for the type. **Change** opens the model browser: search, favorites, your team's trained models, legacy models on demand. **Ctrl+K** (Cmd+K) opens a command palette over models, views, actions and the selection's steps, with **Ask Claude** for anything else.
 
 <table>
   <tr>
@@ -162,7 +162,9 @@ Motion gathers the animation models: a motion from a prompt (Cartwheel, Uthana, 
 
 ## Next steps
 
-Any asset leads to the next one. An image becomes a 3D model, a Gaussian splat, a video, a PBR material, a skybox or a cleaner image (remove background, upscale, vectorize, pixelate, edit by prompt). A video becomes an upscaled or restyled one, one with sound, or a character animation. A voice becomes a changed or isolated one. Steps are on result cards, on a right-click in the Project window (**Scenario > Next Step**) and in the Inspector header of any generated asset, which also shows its model, prompt, job and cost.
+Any asset leads to the next one. An image becomes a 3D model, a Gaussian splat, a video, a PBR material, a skybox or a cleaner image (remove background, upscale, vectorize, pixelate, edit by prompt). A video becomes an upscaled or restyled one, one with sound, or a character animation. A voice becomes a changed or isolated one. Steps are on result cards, on a right-click in the Project window or the Hierarchy (**Scenario > Next Step**) and in the Inspector header of any generated asset, which also shows its model, prompt, job and cost.
+
+**In the Scene view**, the Scenario panel follows the selection. A placed model gets its steps (Texture, Shape, Rig and animate, Parts and style) and scene actions that run at once: **Make playable** for a rigged character with a walk, **Put on the ground**, **Set** a height in meters, **Make walkable** for a bridge or platform. A terrain gets **Scatter here** (a model, a count, an area) and **Light and mood** presets. An image or a sprite gets the image steps; nothing selected, the Generate shortcuts. Steps open Create with the asset attached and show the price before anything is sent.
 
 ## Library, Jobs and Workflows
 
@@ -194,11 +196,13 @@ The agent gets three sets of tools:
 
 - **Scenario**: find a model, find a motion in Meshy's library, price, generate, run workflows, follow jobs, import, upload.
 - **Scene**: inspect the hierarchy, create and change objects and components, size them in meters and sit them on the ground, assign materials, set the skybox, save, read the console, and capture the Scene view or the main camera as an image it can look at.
-- **World**: build a terrain from a generated heightmap with ground materials painted by height and slope, scatter models on it with colliders, turn a rigged and animated character into a third-person player with a follow camera, and playtest in Play mode (the character walks, runs and jumps through waypoints; the result says what it reached and whether it fell) or record frames.
+- **World**: build a terrain from a generated heightmap with ground materials painted by height and slope, measure the ground along a route, scatter models on it with colliders or line them up along a path with lights, make a generated bridge or platform walkable (invisible walkway, rails, ramps to the ground), set the light and mood from a preset (sun, fog, ambient, URP post-processing), capture four angles at once, turn a rigged and animated character into a third-person player with a follow camera, and playtest in Play mode (the character walks, runs and jumps through waypoints; the result says what it reached and whether it fell) or record frames.
 
 Every scene edit is one Undo step. A paid call above the per-call limit (80 CU by default) or beyond the session budget (1,200 CU) waits for **Approve** in the window. The activity log lists every call.
 
 Example, tested with Claude Code: *"Check that you are signed in, find a sword attack in the motion library, list three image-to-3D models, price a barrel prop, add a cube to the scene and show me the Scene view."* It ran the six steps in 17 seconds without spending. The barrel's price, 120 CU, is above the auto-approve limit, so generating it would wait for approval in Unity.
+
+**Ask from inside Unity.** Type a request in the **Ask** field of the Scene view panel or the Agent view ("make the bridge rustier", "add 20 pines around the temple"). The plugin runs your Claude Code against the bridge with the selection, and shows each tool call, the answer and any approval it waits for; **Stop** ends it. The command palette has **Ask Claude** too. It needs Claude Code installed and signed in; everything else works without it.
 
 The hosted [Scenario MCP](https://mcp.scenario.com/docs) covers the platform without Unity (collections, training, usage). Connect both when needed.
 

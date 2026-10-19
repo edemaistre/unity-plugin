@@ -7,8 +7,8 @@ using UnityEngine.UIElements;
 namespace Scenario.Editor.UI
 {
     /// <summary>
-    /// The agent bridge: on/off, the local endpoint and token, one-click setup per
-    /// client, spending permissions, pending approvals and the activity log.
+    /// The agent bridge: Ask Claude, on/off, the local endpoint and token, one-click
+    /// setup per client, spending permissions, pending approvals and the activity log.
     /// </summary>
     public sealed class AgentView : View
     {
@@ -16,16 +16,35 @@ namespace Scenario.Editor.UI
 
         readonly VisualElement _content;
         readonly VisualElement _live;
+        readonly AskBox _ask;
         string _signature = "";
 
         public AgentView(ScenarioWindow window) : base(window)
         {
             var scroll = Ui.Scroll();
             Add(scroll);
+            scroll.Add(Ui.Text("Agent", "sc-title"));
+            scroll.Add(Ui.Text("Let Claude Code, Codex, Cursor or any MCP client use Scenario and this Unity project: find models, generate, import, build the scene and look at it. Paid calls follow the limits below.", "sc-subtitle"));
+            // Built once, so a request being typed survives the view's rebuilds.
+            var askCard = Ui.Card();
+            askCard.name = "ask-card";
+            _ask = new AskBox();
+            askCard.Add(_ask);
+            var askHint = Ui.Text("Runs your Claude Code on this project through the bridge, with the selection. It turns the bridge on if needed.", "sc-faint", "sc-small", "sc-wrap");
+            askHint.style.marginTop = 6;
+            askCard.Add(askHint);
+            scroll.Add(askCard);
             _content = new VisualElement();
             scroll.Add(_content);
             _live = new VisualElement();
             scroll.Add(_live);
+        }
+
+        /// <summary>Puts a request in the Ask field (the command palette's Ask Claude).</summary>
+        public void FocusAsk(string text = null)
+        {
+            if (text != null) _ask.Text = text;
+            _ask.FocusField();
         }
 
         public override void OnShow()
@@ -49,9 +68,6 @@ namespace Scenario.Editor.UI
         {
             _content.Clear();
             var user = ScenarioUserSettings.instance;
-            _content.Add(Ui.Text("Agent", "sc-title"));
-            _content.Add(Ui.Text("Let Claude Code, Codex, Cursor or any MCP client use Scenario and this Unity project: find models, generate, import, build the scene and look at it. Paid calls follow the limits below.", "sc-subtitle"));
-
             var toggleCard = Ui.Card("sc-card-row");
             var dot = new VisualElement();
             dot.AddToClassList("sc-agent-dot");

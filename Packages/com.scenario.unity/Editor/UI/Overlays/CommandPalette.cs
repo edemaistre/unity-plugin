@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Scenario.Editor.Agent;
 using Scenario.Editor.Core;
 using UnityEditor;
@@ -10,8 +12,8 @@ using UnityEngine.UIElements;
 namespace Scenario.Editor.UI
 {
     /// <summary>
-    /// Ctrl/Cmd+K: every action, model, step on the selection and recent job,
-    /// filtered as you type.
+    /// Ctrl/Cmd+K: every action, model, step and scene action on the selection and
+    /// recent job, filtered as you type, and "Ask Claude" with what was typed.
     /// </summary>
     public sealed class CommandPalette : VisualElement
     {
@@ -28,6 +30,7 @@ namespace Scenario.Editor.UI
         readonly TextField _search;
         readonly ListView _list;
         readonly List<Command> _all;
+        readonly SelectionContext _context;
         List<Command> _items = new List<Command>();
 
         ScenarioService S => ScenarioService.Instance;
@@ -65,6 +68,7 @@ namespace Scenario.Editor.UI
             footer.AddToClassList("sc-sheet-footer");
             footer.Add(new Label("↑↓ move   ↩ run   Esc close"));
             Add(footer);
+            _context = SceneActions.Current();
             _all = BuildCommands();
             Filter();
             RegisterCallback<AttachToPanelEvent>(_ => schedule.Execute(() => _search.Focus()).StartingIn(30));
@@ -93,26 +97,31 @@ namespace Scenario.Editor.UI
             var kind = InputSlot.KindOf(selected);
             if (selected != null && kind.Length > 0)
             {
-                var name = selected.name;
                 list.Add(new Command
                 {
-                    Title = $"Use {name} as input", Detail = "Attach the selection to the current model", Icon = "upload", Group = "Selection",
+                    Title = $"Use {selected.name} as input", Detail = "Attach the selection to the current model", Icon = "upload", Group = "Selection",
                     Run = () =>
                     {
                         _window.Show("create");
                         _window.Create.AttachObjects(Selection.objects);
                     },
                 });
-                foreach (var step in OutputTypes.StepsFor(kind))
-                {
-                    var s = step;
-                    list.Add(new Command
-                    {
-                        Title = $"{s.Title}: {name}", Detail = "Opens Create with the model and the asset; you see the price before sending", Icon = "wand", Group = "Selection",
-                        Run = () => _window.Create.StartStep(s, new SlotItem { Source = selected, Kind = kind, Label = name }),
-                    });
-                }
             }
+            list.AddRange(SelectionCommands(_context));
+            foreach (var mood in SceneActions.Moods)
+            {
+                var preset = mood;
+                list.Add(new Command
+                {
+                    Title = "Light and mood: " + SceneActions.MoodTitle(preset).ToLowerInvariant(), Detail = "Sun, fog, ambient light and post-processing for the open scene",
+                    Icon = "layers", Group = "Scene", Run = () => Report(SceneActions.SetMood(preset)),
+                });
+            }
+            list.Add(new Command
+            {
+                Title = "Show the Scenario panel in the Scene view", Detail = "Steps and scene actions for the selection, and Ask", Icon = "layers", Group = "Go to",
+                Run = () => ScenarioOverlay.Reveal(),
+            });
 
             list.Add(new Command { Title = "Library", Detail = "Your Scenario assets and the ones in this project", Icon = "library", Group = "Go to", Run = () => _window.Show("library") });
             list.Add(new Command { Title = "Jobs", Detail = "Everything sent from this project", Icon = "jobs", Group = "Go to", Run = () => _window.Show("jobs") });
@@ -165,6 +174,89 @@ namespace Scenario.Editor.UI
             return list;
         }
 
+        /// <summary>The Scene view panel's actions on the selection: its steps, then the scene actions.</summary>
+        IEnumerable<Command> SelectionCommands(SelectionContext context)
+        {
+            var label = context.Label;
+            foreach (var step in context.Steps)
+            {
+                var s = step;
+                yield return new Command
+                {
+                    Title = $"{s.Title}: {label}", Detail = "Opens Create with the model and the asset; you see the price before sending", Icon = "wand", Group = "Selection",
+                    Run = () => SceneActions.OpenStep(s, context),
+                };
+            }
+            var target = context.Target;
+            if (context.Mode == SelectionContext.Object3D)
+            {
+                yield return new Command
+                {
+                    Title = $"Make {label} playable", Detail = context.CanMakePlayable ? "A third-person player with a follow camera" : context.PlayableIssue, Icon = "play", Group = "Selection",
+                    Run = () =>
+                    {
+                        var outcome = SceneActions.MakePlayable(target);
+                        Report(outcome);
+                        if (outcome.Ok) Selection.activeGameObject = outcome.Object;
+                    },
+                };
+                yield return new Command { Title = $"Put {label} on the ground", Icon = "cube", Group = "Selection", Run = () => Report(SceneActions.PutOnGround(target)) };
+                yield return new Command
+                {
+                    Title = $"Make {label} walkable", Detail = "For a bridge, stairs or a platform: invisible walkway, rails and ramps", Icon = "cube", Group = "Selection",
+                    Run = () => Report(SceneActions.MakeWalkable(target)),
+                };
+                yield return new Command
+                {
+                    Title = $"Set {label}'s height", Detail = "Or type it here in meters: height 2.5", Icon = "cube", Group = "Selection",
+                    Run = () => ScenarioOverlay.Reveal(),
+                };
+            }
+            if (context.Mode == SelectionContext.TerrainMode)
+                yield return new Command
+                {
+                    Title = $"Scatter on {label}…", Detail = "Pick a model, a count and an area in the Scene view's Scenario panel", Icon = "grid", Group = "Selection",
+                    Run = () => ScenarioOverlay.Reveal(),
+                };
+        }
+
+        /// <summary>A height for the selected object, from a number in the typed text.</summary>
+        IEnumerable<Command> HeightCommands(string text)
+        {
+            text = (text ?? "").Trim();
+            if (text.Length == 0) yield break;
+            var number = Regex.Match(text, @"\d+(?:[.,]\d+)?");
+            if (_context.Mode == SelectionContext.Object3D && number.Success
+                && float.TryParse(number.Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var meters) && meters > 0)
+            {
+                var target = _context.Target;
+                yield return new Command
+                {
+                    Title = $"Set {_context.Label}'s height to {meters.ToString("0.##", CultureInfo.InvariantCulture)} m", Detail = "Scaled evenly; its base stays where it is",
+                    Icon = "cube", Group = "Selection", Run = () => Report(SceneActions.SetHeight(target, meters)),
+                };
+            }
+        }
+
+        /// <summary>Sends the typed text to Claude Code (Agent shows the progress).</summary>
+        Command AskCommand(string text)
+        {
+            text = (text ?? "").Trim();
+            if (text.Length == 0) return null;
+            return new Command
+            {
+                Title = "Ask Claude: " + text, Detail = "Claude Code does it in this project, on the selection", Icon = "agent", Group = "Ask",
+                Run = () =>
+                {
+                    _window.Show("agent");
+                    if (!Ask.Start(text, SceneActions.SelectionPaths()))
+                        (_window.ViewForTests("agent") as AgentView)?.FocusAsk(Ask.Running ? null : text);
+                },
+            };
+        }
+
+        void Report(SceneActions.Outcome outcome) => _window.Toast(outcome.Message, outcome.Ok ? "success" : "warning");
+
         IEnumerable<Command> ModelCommands(string[] words)
         {
             if (words.Length == 0) return Enumerable.Empty<Command>();
@@ -206,7 +298,12 @@ namespace Scenario.Editor.UI
                 if (score > 0) scored.Add((command, score));
             }
             _items = scored.OrderByDescending(s => s.score).Select(s => s.command).Take(40).ToList();
+            _items.AddRange(HeightCommands(_search.value));
+            // A sentence is a request for Claude; one or two words are more likely a model's name.
+            var ask = AskCommand(_search.value);
+            if (ask != null && words.Length >= 3) _items.Add(ask);
             _items.AddRange(ModelCommands(words));
+            if (ask != null && words.Length < 3) _items.Add(ask);
             _list.itemsSource = _items;
             _list.Rebuild();
             if (_items.Count > 0) _list.SetSelectionWithoutNotify(new[] { 0 });
