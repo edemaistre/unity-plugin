@@ -46,7 +46,20 @@ namespace Scenario.Editor.Agent
             "Flow: scenario_status, then models_find (add recommend_for_prompt to get Scenario's ranked picks), model_schema, estimate (free), generate (paid: it waits, imports and places the result, and returns Unity asset paths and scene object paths). " +
             "Then capture_view to look at the scene. Inputs that take files accept Scenario asset ids or Unity asset paths (Assets/...), uploaded for you. " +
             "Money rules: a paid call is never retried by the bridge. If generate reports an unknown outcome, call jobs instead of generating again. Calls above the user's limit wait for approval in Unity. " +
-            "Scene objects are addressed by hierarchy path (Root/Child). Each scene edit is one Undo step the user can revert.";
+            "No call blocks longer than 45 s: slow work (3D, video, audio, a long playtest) answers \"still running\" and names the call that follows it (jobs or play status, with wait_seconds). " +
+            "For a batch, call generate with wait false for each request, then jobs with wait_seconds. " +
+            "Scene objects are addressed by hierarchy path (Root/Child). Each scene edit is one Undo step the user can revert. " +
+            "Walkable worlds: terrain_create (from a generated heightmap image and generated materials), then generated models sized and grounded with object_set (height, ground) or scattered with scatter, " +
+            "then a rigged and animated character turned into a player with make_playable, then play (walk) to playtest it.";
+
+        /// <summary>
+        /// Longest a tool call blocks. MCP clients commonly give up on a call after 60 s, so slower work
+        /// answers "still running" with the call that follows it. Tests lower it.
+        /// </summary>
+        internal static int CallSeconds = 45;
+
+        /// <summary>Seconds left to wait in a call that began at started, out of the asked wait.</summary>
+        static int Budget(double started, int asked) => (int)Math.Max(0, Math.Min(asked, CallSeconds - (Json.Now() - started)));
 
         static ScenarioService S => ScenarioService.Instance;
         // Built on first use: Build() reads static helpers declared further down.
@@ -83,9 +96,16 @@ namespace Scenario.Editor.Agent
             }
             try
             {
-                return await tool.Run(arguments ?? new JObject(), context);
+                var result = await tool.Run(arguments ?? new JObject(), context);
+                if (tool.EditsScene && EditorApplication.isPlaying && result["isError"] == null)
+                    ((JArray)result["content"]).Add(new JObject { ["type"] = "text", ["text"] = "Unity is in Play mode: this edit is lost when Play mode stops (play with action stop, then edit)." });
+                return result;
             }
             catch (ToolError e)
+            {
+                return Error(e.Message);
+            }
+            catch (Exception e) when (e is ArgumentException || e is InvalidOperationException)
             {
                 return Error(e.Message);
             }
@@ -143,6 +163,8 @@ namespace Scenario.Editor.Agent
         static JObject Bool(string description) => new JObject { ["type"] = "boolean", ["description"] = description };
         static JObject Obj(string description) => new JObject { ["type"] = "object", ["description"] = description };
         static JObject Arr(string itemType, string description) => new JObject { ["type"] = "array", ["items"] = new JObject { ["type"] = itemType }, ["description"] = description };
+        static JObject Objects(string description) => new JObject { ["type"] = "array", ["items"] = new JObject { ["type"] = "object" }, ["description"] = description };
+        static JObject Pair(string description) => new JObject { ["type"] = "array", ["items"] = new JObject { ["type"] = "number" }, ["minItems"] = 2, ["maxItems"] = 2, ["description"] = description };
         static JObject Vec(string description) => new JObject { ["type"] = "array", ["items"] = new JObject { ["type"] = "number" }, ["minItems"] = 3, ["maxItems"] = 3, ["description"] = description };
 
         static string S_(JObject args, string key, string fallback = "") => Json.Str(args, key, fallback);
@@ -203,7 +225,7 @@ namespace Scenario.Editor.Agent
                 new Tool
                 {
                     Name = "generate",
-                    Description = "Paid. Generates with a Scenario model, waits, imports the result into Assets and places it in the scene (on target when given). Returns Unity asset paths and scene object paths. Above the user's limit it waits for approval in Unity. Never call it again for the same request after an unknown outcome: call jobs.",
+                    Description = "Paid. Generates with a Scenario model, waits up to 45 s, imports the result into Assets and places it in the scene (on target when given). Returns Unity asset paths and scene object paths. A slower job answers \"still running\" with its local_id: it imports and places itself when done, and jobs with wait_seconds follows it. Above the user's limit it waits for approval in Unity. Never call it again for the same request after an unknown outcome: call jobs.",
                     Schema = Schema(new[] { "model_id" },
                         ("model_id", Str("Model id.")),
                         ("parameters", Obj("Model parameters from model_schema. File inputs take Scenario asset ids or Unity asset paths.")),
@@ -212,20 +234,20 @@ namespace Scenario.Editor.Agent
                         ("target", Str("Hierarchy path of an object to apply the result to (sprite, material, audio source, video player).")),
                         ("folder", Str("Assets folder for the files (default Assets/Scenario/<Type>/<date>).")),
                         ("max_cu", Num("Refuse without sending if the price is above this.")),
-                        ("wait", Bool("Wait for the result (default true).")),
-                        ("timeout_seconds", Int("How long to wait, default 240."))),
+                        ("wait", Bool("Wait for the result, up to 45 s (default true). False returns at once: use it to send a batch, then follow with jobs.")),
+                        ("timeout_seconds", Int("How long to wait, at most 45 (the default)."))),
                     Run = (a, c) => Generate(a, c, workflow: false),
                 },
                 new Tool
                 {
                     Name = "workflow_run",
-                    Description = "Paid. Runs a Scenario workflow (see workflows_find) with its inputs, waits and imports the outputs. Same approval and money rules as generate.",
+                    Description = "Paid. Runs a Scenario workflow (see workflows_find) with its inputs, waits up to 45 s and imports the outputs; a slower run is followed with jobs. Same approval and money rules as generate.",
                     Schema = Schema(new[] { "workflow_id" },
                         ("workflow_id", Str("Workflow id.")),
                         ("inputs", Obj("Workflow inputs by name. File inputs take Scenario asset ids or Unity asset paths.")),
                         ("max_cu", Num("Refuse without sending if the price is above this.")),
-                        ("wait", Bool("Wait for the outputs (default true).")),
-                        ("timeout_seconds", Int("How long to wait, default 300."))),
+                        ("wait", Bool("Wait for the outputs, up to 45 s (default true).")),
+                        ("timeout_seconds", Int("How long to wait, at most 45 (the default)."))),
                     Run = (a, c) => Generate(a, c, workflow: true),
                 },
                 new Tool
@@ -248,9 +270,9 @@ namespace Scenario.Editor.Agent
                 new Tool
                 {
                     Name = "jobs", ReadOnly = true,
-                    Description = "Recent requests from this Unity project with state, cost, files and placed objects. Give local_id or job_id to get one, and wait_seconds to wait for it to finish.",
+                    Description = "Recent requests from this Unity project with state, cost, files and placed objects. Give local_id or job_id to get one, and wait_seconds to wait for it to finish (call again while it says still running).",
                     Schema = Schema(None, ("local_id", Str("Ledger id from generate.")), ("job_id", Str("Scenario job id.")),
-                        ("wait_seconds", Int("Wait up to this long for the job to finish.")), ("limit", Int("Rows to list, default 10."))),
+                        ("wait_seconds", Int("Wait up to this long, at most 45, for the job to finish.")), ("limit", Int("Rows to list, default 10."))),
                     Run = Jobs,
                 },
                 new Tool
@@ -298,7 +320,8 @@ namespace Scenario.Editor.Agent
                     Schema = Schema(null, ("name", Str("Object name.")),
                         ("primitive", Str("cube, sphere, capsule, cylinder, plane or quad. Omit for an empty object.", "cube", "sphere", "capsule", "cylinder", "plane", "quad")),
                         ("prefab", Str("Asset path of a prefab or model to instantiate.")), ("parent", Str("Parent hierarchy path.")),
-                        ("position", Vec("World position [x, y, z].")), ("rotation", Vec("Euler angles in degrees.")), ("scale", Vec("Local scale."))),
+                        ("position", Vec("World position [x, y, z].")), ("rotation", Vec("Euler angles in degrees.")), ("scale", Vec("Local scale.")),
+                        ("height", Num("Scale uniformly to this height in meters (after scale).")), ("ground", Bool("Sit it on the ground below (terrain or any collider)."))),
                     Run = ObjectCreate,
                 },
                 new Tool
@@ -307,7 +330,8 @@ namespace Scenario.Editor.Agent
                     Description = "Changes an object's name, active state, parent, transform, tag or layer.",
                     Schema = Schema(new[] { "path" }, ("path", Str("Hierarchy path.")), ("name", Str("New name.")), ("active", Bool("Active state.")),
                         ("parent", Str("New parent path, or empty for the scene root.")), ("position", Vec("Position.")), ("rotation", Vec("Euler angles.")),
-                        ("scale", Vec("Local scale.")), ("local", Bool("Position and rotation in parent space (default false).")), ("tag", Str("Tag.")), ("layer", Str("Layer name."))),
+                        ("scale", Vec("Local scale.")), ("local", Bool("Position and rotation in parent space (default false).")), ("tag", Str("Tag.")), ("layer", Str("Layer name.")),
+                        ("height", Num("Scale uniformly to this height in meters (after scale).")), ("ground", Bool("Sit it on the ground below, after the other changes."))),
                     Run = ObjectSet,
                 },
                 new Tool
@@ -383,6 +407,66 @@ namespace Scenario.Editor.Agent
                     Schema = Schema(None, ("source", Str("scene_view, main_camera, or a camera's hierarchy path (default main_camera, then scene_view, then an overview of the open scenes).")),
                         ("max_size", Int("Longest side in pixels, default 768.")), ("upload", Bool("Also upload to Scenario and return the asset id."))),
                     Run = CaptureView,
+                },
+                new Tool
+                {
+                    Name = "terrain_create", EditsScene = true,
+                    Description = "Creates walkable ground: a Unity Terrain with a collider, shaped by a heightmap image (generate one first: a top-down grayscale heightmap, white is high) or by gentle noise, " +
+                                  "with flat areas for buildings and ground materials (generated PBR materials or textures) painted by height and slope. The first layer covers everything else.",
+                    Schema = Schema(None, ("name", Str("Object name, default Terrain.")), ("heightmap", Str("Image asset path (Assets/...). Omit for rolling noise.")),
+                        ("size", Vec("[width, max height, length] in meters, default [200, 30, 200].")), ("center", Vec("World position of the terrain's center at its lowest level, default [0, 0, 0].")),
+                        ("resolution", Int("Heightmap resolution: 129, 257, 513 (default) or 1025.")), ("smoothing", Int("Blur passes against stair steps from 8-bit images, default 2.")),
+                        ("edge_falloff", Num("0 to 0.5: share of the width over which the edges drop to the bottom (an island or plateau). Default 0.")),
+                        ("seed", Int("Noise seed when there is no heightmap.")),
+                        ("flat_areas", Objects("Areas leveled for buildings or paths: {center: [x, z], radius, height (world y, optional: default the ground there)}.")),
+                        ("layers", Objects("Ground materials: {material or texture (asset path), normal (optional), tile (meters, default 8), min_height, max_height (0 to 1 of the terrain's height), min_slope, max_slope (degrees)}. The first is the base."))),
+                    Run = TerrainCreate,
+                },
+                new Tool
+                {
+                    Name = "scatter", EditsScene = true,
+                    Description = "Places many copies of a model on the ground in one call: random positions in an area, random turn, a size range in meters, slopes and keep-clear zones avoided, colliders added. " +
+                                  "For trees, rocks, grass clumps, lanterns. Copies go under one group object.",
+                    Schema = Schema(new[] { "source" }, ("source", Str("Prefab or model asset path, or a scene object to copy.")), ("count", Int("How many, default 10.")),
+                        ("center", Pair("[x, z] center of the area, default [0, 0].")), ("area", Pair("[width, length] in meters, default [50, 50].")),
+                        ("on", Str("Ground object path (a terrain): only its surface counts. Default: any collider.")),
+                        ("height", Pair("[min, max] height of each copy in meters. Omit to keep the source's size.")), ("scale", Pair("[min, max] scale factor when height is not given.")),
+                        ("random_yaw", Bool("Random turn, default true.")), ("tilt", Num("Most degrees a copy leans with the ground, default 0.")),
+                        ("max_slope", Num("Skip ground steeper than this, degrees, default 35.")), ("min_distance", Num("Meters between copies, default from their size.")),
+                        ("keep_clear", Objects("Zones to leave empty: {center: [x, z], radius}.")), ("collider", Str("mesh (default), box or none.", "mesh", "box", "none")),
+                        ("seed", Int("Same seed, same layout.")), ("name", Str("Group object name."))),
+                    Run = Scatter,
+                },
+                new Tool
+                {
+                    Name = "make_playable", EditsScene = true,
+                    Description = "Turns a rigged, animated character in the scene into a third-person player: WASD or gamepad to walk, Shift to run, Space to jump, a follow camera. " +
+                                  "Builds an Animator Controller from its motions (idle, walk, run, jump), sizes the character, and matches speeds to the clips so feet do not slide. " +
+                                  "Motions: Unity asset paths of animation results (the Animate step or model_meshy-animation with a motions_find id), or state names in its controller; found by name when omitted.",
+                    Schema = Schema(new[] { "character" }, ("character", Str("Hierarchy path of the rigged character.")),
+                        ("idle", Str("Idle motion.")), ("walk", Str("Walk motion (required unless it can be found by name).")), ("run", Str("Run motion.")), ("jump", Str("Jump motion.")),
+                        ("height", Num("Character height in meters. Default: kept when 1.2 to 2.6 m, else 1.8 m.")),
+                        ("walk_speed", Num("Meters per second; default from the walk clip.")), ("run_speed", Num("Meters per second; default from the run clip.")),
+                        ("turn", Num("Degrees to turn the model if it faces away from its direction of travel (180 for a model facing -Z).")),
+                        ("run_by_default", Bool("Run unless Shift is held.")), ("camera", Bool("Set up the follow camera on the main camera, default true.")),
+                        ("footstep", Str("Audio asset path played at each step: ideally one short footstep; a longer recording is sliced."))),
+                    Run = MakePlayable,
+                },
+                new Tool
+                {
+                    Name = "play",
+                    Description = "Play mode: start, stop, status, walk (playtest: the player walks or runs through waypoints and the result says which were reached, falls, jumps, time) and record (PNG frames of the main camera at a fixed frame rate). " +
+                                  "Walk and record start Play mode when needed and keep running in Unity: a call answers within 45 s, and if the walk or recording is not over, status with wait_seconds returns its result. " +
+                                  "Edits made in Play mode are lost when it stops.",
+                    Schema = Schema(new[] { "action" }, ("action", Str("start, stop, status, walk or record.", "start", "stop", "status", "walk", "record")),
+                        ("wait_seconds", Int("Status: wait up to this long, at most 45, for a running walk or recording to end.")),
+                        ("player", Str("Player path, default the first ScenarioPlayer.")),
+                        ("waypoints", Objects("For walk: {position: [x, y, z] or at: object path, run (bool), jump (bool: jump on reaching it), wait (seconds)}.")),
+                        ("timeout", Num("Walk: seconds of game time before giving up, default 90.")),
+                        ("record", Bool("Walk: also record frames.")), ("seconds", Num("Record: length in seconds of game time.")),
+                        ("folder", Str("Frames folder, default Recordings/<time> in the project.")), ("width", Int("Default 1920.")), ("height", Int("Default 1080.")),
+                        ("fps", Int("Frames per second of game time, default 30.")), ("camera", Str("Camera path, default the main camera."))),
+                    Run = Play,
                 },
             };
         }
@@ -654,6 +738,7 @@ namespace Scenario.Editor.Agent
 
         static async Task<JObject> Generate(JObject args, Context context, bool workflow)
         {
+            var started = Json.Now();
             var request = await BuildRequest(args, context, workflow);
             var block = S.BlockReason(request);
             if (block.Length > 0) throw new ToolError(block + " Nothing was sent.");
@@ -678,10 +763,8 @@ namespace Scenario.Editor.Agent
             }
             AgentServer.AddSpent(quote.Cu);
             var row = result.Value;
-            if (B_(args, "wait", true)) await WaitFor(row, I_(args, "timeout_seconds", workflow ? 300 : 240));
-            var data = RowJson(row);
-            if (!row.IsFinal) data["next"] = $"Still {row.State}. Call jobs with local_id {row.LocalId} and wait_seconds to get the result.";
-            return Ok(data);
+            if (B_(args, "wait", true)) await WaitFor(row, Budget(started, I_(args, "timeout_seconds", CallSeconds)));
+            return Ok(Following(row));
         }
 
         static bool Done(JobRow row)
@@ -693,8 +776,17 @@ namespace Scenario.Editor.Agent
 
         static async Task WaitFor(JobRow row, int seconds)
         {
-            var until = Json.Now() + Math.Max(0, Math.Min(900, seconds));
+            var until = Json.Now() + Math.Max(0, Math.Min(CallSeconds, seconds));
             while (!Done(row) && Json.Now() < until) await Task.Delay(1000);
+        }
+
+        /// <summary>The row, plus the call to make next while it is still running.</summary>
+        static JObject Following(JobRow row)
+        {
+            var data = RowJson(row);
+            if (!Done(row))
+                data["next"] = $"Still {row.State}: it imports{(row.Place ? " and places" : "")} itself when it finishes. Call jobs with local_id {row.LocalId} and wait_seconds {CallSeconds} to follow it. Do not generate it again.";
+            return data;
         }
 
         static JObject RowJson(JobRow row)
@@ -728,7 +820,7 @@ namespace Scenario.Editor.Agent
                 if (row == null) throw new ToolError("No such job in this Unity project.");
                 var wait = I_(args, "wait_seconds", 0);
                 if (wait > 0) await WaitFor(row, wait);
-                return Ok(RowJson(row));
+                return Ok(Following(row));
             }
             var limit = Math.Max(1, Math.Min(50, I_(args, "limit", 10)));
             return Ok(new JObject { ["jobs"] = new JArray(S.Ledger.Jobs.Where(r => r.State != JobState.Dismissed).Take(limit).Select(RowJson)) });
@@ -1003,7 +1095,23 @@ namespace Scenario.Editor.Agent
             if (rotation.HasValue) go.transform.eulerAngles = rotation.Value;
             var scale = Vec3(args["scale"]);
             if (scale.HasValue) go.transform.localScale = scale.Value;
-            return Task.FromResult(Ok(new JObject { ["path"] = PathOf(go) }));
+            return Task.FromResult(Ok(SizeAndGround(go, args)));
+        }
+
+        /// <summary>Applies height and ground, and reports where the object ended up.</summary>
+        static JObject SizeAndGround(GameObject go, JObject args)
+        {
+            var data = new JObject { ["path"] = PathOf(go) };
+            var height = Json.ToDouble(args["height"], 0);
+            if (height > 0) World.FitHeight(go, (float)height);
+            if (B_(args, "ground", false) && !World.Ground(go)) data["note"] = "No ground below it: nothing with a collider under its position.";
+            if (height > 0 || args["ground"] != null)
+            {
+                var bounds = World.BoundsOf(go);
+                data["position"] = V(go.transform.position);
+                data["size"] = V(bounds.size);
+            }
+            return data;
         }
 
         static Task<JObject> ObjectSet(JObject args, Context context)
@@ -1040,7 +1148,7 @@ namespace Scenario.Editor.Agent
             }
             var scale = Vec3(args["scale"]);
             if (scale.HasValue) go.transform.localScale = scale.Value;
-            return Task.FromResult(Ok(new JObject { ["path"] = PathOf(go) }));
+            return Task.FromResult(Ok(SizeAndGround(go, args)));
         }
 
         static Type ComponentType(string name)
@@ -1319,6 +1427,279 @@ namespace Scenario.Editor.Agent
                 data["asset_id"] = uploaded.Value;
             }
             return Image(png, data);
+        }
+        // --- World tools ----------------------------------------------------------------------
+
+        static Vector2? Vec2(JToken token)
+        {
+            if (token is JArray a && a.Count >= 2) return new Vector2((float)Json.ToDouble(a[0]), (float)Json.ToDouble(a[1]));
+            return null;
+        }
+
+        static float F_(JToken token, string key, float fallback) => token?[key] == null ? fallback : (float)Json.ToDouble(token[key], fallback);
+
+        static Task<JObject> TerrainCreate(JObject args, Context context)
+        {
+            var spec = new World.TerrainSpec
+            {
+                Name = S_(args, "name", "Terrain"),
+                Heightmap = S_(args, "heightmap"),
+                Resolution = I_(args, "resolution", 513),
+                Smoothing = Math.Max(0, Math.Min(10, I_(args, "smoothing", 2))),
+                EdgeFalloff = Mathf.Clamp(F_(args, "edge_falloff", 0), 0, 0.5f),
+                Seed = I_(args, "seed", 1),
+            };
+            spec.Size = Vec3(args["size"]) ?? spec.Size;
+            spec.Center = Vec3(args["center"]) ?? spec.Center;
+            foreach (var area in (args["flat_areas"] as JArray ?? new JArray()).OfType<JObject>())
+                spec.Flats.Add(new World.Flat
+                {
+                    Center = Vec2(area["center"]) ?? throw new ToolError("Each flat area needs center [x, z]."),
+                    Radius = F_(area, "radius", 10),
+                    Height = area["height"] == null ? float.NaN : F_(area, "height", 0),
+                });
+            foreach (var layer in (args["layers"] as JArray ?? new JArray()).OfType<JObject>())
+                spec.Layers.Add(new World.Layer
+                {
+                    Source = Json.Str(layer, "material", Json.Str(layer, "texture")),
+                    Normal = Json.Str(layer, "normal"),
+                    Tile = F_(layer, "tile", 8),
+                    MinHeight = F_(layer, "min_height", 0),
+                    MaxHeight = F_(layer, "max_height", 1),
+                    MinSlope = F_(layer, "min_slope", 0),
+                    MaxSlope = F_(layer, "max_slope", 90),
+                });
+            var result = World.CreateTerrain(spec);
+            var terrain = result.Terrain;
+            var size = terrain.terrainData.size;
+            var data = new JObject
+            {
+                ["path"] = PathOf(terrain.gameObject),
+                ["data"] = AssetDatabase.GetAssetPath(terrain.terrainData),
+                ["corner"] = V(terrain.transform.position),
+                ["size"] = V(size),
+                ["ground_height"] = new JArray(Math.Round(result.MinHeight, 2), Math.Round(result.MaxHeight, 2)),
+                ["layers"] = terrain.terrainData.terrainLayers.Length,
+                ["next"] = $"Place models with object_set (ground: true) or scatter (on: \"{PathOf(terrain.gameObject)}\").",
+            };
+            if (result.Notes.Count > 0) data["notes"] = new JArray(result.Notes);
+            return Task.FromResult(Ok(data));
+        }
+
+        static Task<JObject> Scatter(JObject args, Context context)
+        {
+            var spec = new World.ScatterSpec
+            {
+                Source = Need(args, "source"),
+                Count = Math.Max(1, Math.Min(500, I_(args, "count", 10))),
+                On = S_(args, "on"),
+                RandomYaw = B_(args, "random_yaw", true),
+                Tilt = Mathf.Clamp(F_(args, "tilt", 0), 0, 45),
+                MaxSlope = F_(args, "max_slope", 35),
+                MinDistance = Math.Max(0, F_(args, "min_distance", 0)),
+                Collider = S_(args, "collider", "mesh"),
+                Seed = I_(args, "seed", 1),
+                Group = S_(args, "name"),
+            };
+            spec.Center = Vec2(args["center"]) ?? spec.Center;
+            spec.Area = Vec2(args["area"]) ?? spec.Area;
+            spec.Height = Vec2(args["height"]) ?? Vector2.zero;
+            spec.Scale = Vec2(args["scale"]) ?? Vector2.one;
+            foreach (var zone in (args["keep_clear"] as JArray ?? new JArray()).OfType<JObject>())
+                spec.KeepClear.Add((Vec2(zone["center"]) ?? throw new ToolError("Each keep_clear zone needs center [x, z]."), F_(zone, "radius", 5)));
+            var result = World.Scatter(spec);
+            var data = new JObject
+            {
+                ["group"] = PathOf(result.Group),
+                ["placed"] = result.Placed,
+            };
+            var skipped = new JObject();
+            if (result.SkippedSlope > 0) skipped["too_steep"] = result.SkippedSlope;
+            if (result.SkippedClear > 0) skipped["keep_clear"] = result.SkippedClear;
+            if (result.SkippedCrowded > 0) skipped["crowded"] = result.SkippedCrowded;
+            if (result.SkippedNoGround > 0) skipped["no_ground"] = result.SkippedNoGround;
+            if (skipped.HasValues) data["rejected_spots"] = skipped;
+            if (result.Placed < spec.Count) data["note"] = $"Only {result.Placed} of {spec.Count} fit: widen the area, lower min_distance or raise max_slope.";
+            return Task.FromResult(Ok(data));
+        }
+
+        static Task<JObject> MakePlayable(JObject args, Context context)
+        {
+            var result = Playable.Make(new Playable.Spec
+            {
+                Character = Need(args, "character"),
+                Idle = S_(args, "idle"),
+                Walk = S_(args, "walk"),
+                Run = S_(args, "run"),
+                Jump = S_(args, "jump"),
+                Height = Math.Max(0, F_(args, "height", 0)),
+                WalkSpeed = Math.Max(0, F_(args, "walk_speed", 0)),
+                RunSpeed = Math.Max(0, F_(args, "run_speed", 0)),
+                Turn = F_(args, "turn", 0),
+                RunByDefault = B_(args, "run_by_default", false),
+                Footstep = S_(args, "footstep"),
+                Camera = B_(args, "camera", true),
+            });
+            var data = new JObject
+            {
+                ["player"] = PathOf(result.Player),
+                ["position"] = V(result.Player.transform.position),
+                ["height"] = Math.Round(result.Height, 2),
+                ["walk_speed"] = Math.Round(result.Component.walkSpeed, 2),
+                ["run_speed"] = Math.Round(result.Component.runSpeed, 2),
+                ["controller"] = AssetDatabase.GetAssetPath(result.Controller),
+                ["motions"] = JObject.FromObject(result.Clips),
+                ["controls"] = "WASD or left stick to move, Shift to run, Space to jump, right mouse button or right stick to look around.",
+            };
+            if (result.Camera != null) data["camera"] = PathOf(result.Camera.gameObject);
+            if (result.Notes.Count > 0) data["notes"] = new JArray(result.Notes);
+            return Task.FromResult(Ok(data));
+        }
+
+        static JObject PlayerJson(ScenarioPlayer player) => new JObject
+        {
+            ["path"] = PathOf(player.gameObject),
+            ["position"] = V(player.transform.position),
+            ["grounded"] = player.Grounded,
+            ["falls"] = player.Falls,
+        };
+
+        // The walk or recording in progress, kept until its result is returned.
+        static Task<JObject> _playRun;
+        static string _playRunKind = "";
+
+        static JObject PlayStatus()
+        {
+            var data = new JObject
+            {
+                ["playing"] = EditorApplication.isPlaying,
+                ["players"] = new JArray(UnityEngine.Object.FindObjectsByType<ScenarioPlayer>(FindObjectsSortMode.None).Select(PlayerJson)),
+            };
+            if (_playRun == null) return data;
+            data["running"] = _playRunKind;
+            var pilot = PlaySession.Walking;
+            if (pilot != null && pilot.waypoints.Count > 0)
+                data["walk"] = new JObject
+                {
+                    ["toward_waypoint"] = Math.Min(pilot.Current + 1, pilot.waypoints.Count),
+                    ["of"] = pilot.waypoints.Count,
+                    ["seconds"] = Math.Round(pilot.Elapsed, 1),
+                };
+            data["next"] = $"The {_playRunKind} is still running. Call play with action status and wait_seconds {CallSeconds} to get its result.";
+            return data;
+        }
+
+        /// <summary>Waits for the running walk or recording within the call's time, then returns its result or where it is.</summary>
+        static async Task<JObject> FollowPlay(double started, int seconds)
+        {
+            var run = _playRun;
+            if (run == null) return Ok(PlayStatus());
+            await PlaySession.Until(() => run.IsCompleted, Budget(started, seconds));
+            if (!run.IsCompleted) return Ok(PlayStatus());
+            _playRun = null;
+            if (run.IsFaulted) throw new ToolError(run.Exception.GetBaseException().Message);
+            return Ok(run.Result);
+        }
+
+        static async Task<JObject> WalkResultJson(PlaySession.WalkSpec spec)
+        {
+            var walk = await PlaySession.Walk(spec);
+            var reached = walk.ReachedAt.Count(t => t >= 0);
+            var data = new JObject
+            {
+                ["reached"] = new JArray(walk.ReachedAt.Select((t, i) => new JObject { ["waypoint"] = i + 1, ["seconds"] = t >= 0 ? Math.Round(t, 1) : (JToken)"given up (stuck)" })),
+                ["falls"] = walk.Falls,
+                ["jumps"] = walk.Jumps,
+                ["seconds"] = Math.Round(walk.Seconds, 1),
+                ["longest_stuck"] = Math.Round(walk.LongestStuck, 1),
+                ["start"] = V(walk.Start),
+                ["end"] = V(walk.End),
+                ["summary"] = $"Reached {reached} of {spec.Points.Count} points in {walk.Seconds:0.0} s" + (walk.Falls > 0 ? $", fell {walk.Falls} time(s)" : ", no falls") + (walk.TimedOut ? ", timed out." : "."),
+            };
+            if (walk.Folder.Length > 0)
+            {
+                data["frames"] = walk.Frames;
+                data["folder"] = walk.Folder;
+            }
+            return data;
+        }
+
+        static async Task<JObject> RecordResultJson(PlaySession.RecordSpec spec)
+        {
+            var (frames, folder) = await PlaySession.Record(spec);
+            return new JObject { ["frames"] = frames, ["folder"] = folder, ["encode"] = $"ffmpeg -framerate {spec.FrameRate} -i \"{folder}/%05d.png\" -c:v libx264 -pix_fmt yuv420p -crf 16 out.mp4" };
+        }
+
+        static PlaySession.RecordSpec RecordSpec(JObject args) => new PlaySession.RecordSpec
+        {
+            Folder = S_(args, "folder"),
+            Camera = S_(args, "camera"),
+            Width = I_(args, "width", 1920),
+            Height = I_(args, "height", 1080),
+            FrameRate = I_(args, "fps", 30),
+            Seconds = Math.Max(0, F_(args, "seconds", 0)),
+        };
+
+        static async Task Playing(double started)
+        {
+            if (EditorApplication.isPlaying) return;
+            if (!await PlaySession.Start(Math.Max(1, Budget(started, CallSeconds))))
+                throw new ToolError(EditorApplication.isPlayingOrWillChangePlaymode
+                    ? "Unity is still entering Play mode. Call play with action status, then try again."
+                    : "Unity did not enter Play mode. Check console_logs for compile errors.");
+        }
+
+        static void NotRunning()
+        {
+            if (_playRun != null && !_playRun.IsCompleted)
+                throw new ToolError($"A {_playRunKind} is running. Call play with action status and wait_seconds {CallSeconds}, or stop.");
+        }
+
+        static async Task<JObject> Play(JObject args, Context context)
+        {
+            var started = Json.Now();
+            switch (Need(args, "action"))
+            {
+                case "start":
+                    await Playing(started);
+                    return Ok(PlayStatus());
+                case "stop":
+                    _playRun = null;
+                    if (!await PlaySession.Stop(Math.Max(1, Budget(started, CallSeconds)))) throw new ToolError("Unity did not leave Play mode yet. Call play with action status.");
+                    return Ok(PlayStatus());
+                case "status":
+                    return await FollowPlay(started, I_(args, "wait_seconds", 0));
+                case "record":
+                    NotRunning();
+                    await Playing(started);
+                    _playRun = RecordResultJson(RecordSpec(args));
+                    _playRunKind = "recording";
+                    return await FollowPlay(started, CallSeconds);
+                case "walk":
+                    var points = new List<ScenarioAutopilot.Waypoint>();
+                    foreach (var point in (args["waypoints"] as JArray ?? new JArray()).OfType<JObject>())
+                    {
+                        var at = Json.Str(point, "at");
+                        Vector3 position;
+                        if (at.Length > 0) position = Find(at).transform.position;
+                        else position = Vec3(point["position"]) ?? throw new ToolError("Each waypoint needs position [x, y, z] or at (an object path).");
+                        points.Add(new ScenarioAutopilot.Waypoint { position = position, run = Json.Truthy(point["run"]), jump = Json.Truthy(point["jump"]), wait = F_(point, "wait", 0) });
+                    }
+                    if (points.Count == 0) throw new ToolError("Give waypoints.");
+                    NotRunning();
+                    await Playing(started);
+                    _playRun = WalkResultJson(new PlaySession.WalkSpec
+                    {
+                        Player = S_(args, "player"),
+                        Points = points,
+                        Timeout = Math.Max(5, F_(args, "timeout", 90)),
+                        Record = B_(args, "record", false) ? RecordSpec(args) : null,
+                    });
+                    _playRunKind = "walk";
+                    return await FollowPlay(started, CallSeconds);
+                default:
+                    throw new ToolError("action is start, stop, status, walk or record.");
+            }
         }
     }
 }

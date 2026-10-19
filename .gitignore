@@ -27,6 +27,9 @@
 # Results the plugin writes while testing in this host project
 /Assets/Scenario/
 /Assets/Scenario.meta
+# Worlds built by film rehearsals (tools/world_rehearsal.py)
+/Assets/TempleWorld/
+/Assets/TempleWorld.meta
 
 # Local agent and test output
 /AgentKit/

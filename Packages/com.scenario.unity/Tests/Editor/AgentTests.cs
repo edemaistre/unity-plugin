@@ -183,6 +183,40 @@ namespace Scenario.Editor.Tests
             Assert.AreEqual(0, _server.Count("model_run"));
         }
 
+        [UnityTest]
+        public IEnumerator Generate_SlowJob_AnswersWithinTheCall_AndPointsToJobs()
+        {
+            Assert.IsTrue(Run.Sync(_s.SignInWithApiKey("key_test", "secret_test")), _s.SignInError);
+            _server.Tools["model_schema_get"] = (args, i) => FakeMcp.Fixture("schema_flare.sse.txt");
+            _server.Tools["model_run"] = (args, i) => Json.Truthy(args["dry_run"])
+                ? FakeMcp.Fixture("estimate.sse.txt")
+                : FakeMcp.Result(new JObject { ["job_id"] = "job_slow", ["status"] = "in-progress" });
+            _server.Tools["job_get"] = (args, i) => FakeMcp.Result(new JObject { ["job"] = new JObject { ["jobId"] = "job_slow", ["status"] = "in-progress", ["progress"] = 0.3 } });
+            var budget = AgentTools.CallSeconds;
+            AgentTools.CallSeconds = 2;
+            try
+            {
+                var started = Json.Now();
+                var call = AgentServer.Dispatch(Rpc("tools/call", new JObject
+                {
+                    ["name"] = "generate",
+                    ["arguments"] = new JObject { ["model_id"] = "model_openai-gpt-image-2-5-flare", ["parameters"] = new JObject { ["prompt"] = "a lantern" } },
+                }), "");
+                yield return Await(call, 30);
+                Assert.Less(Json.Now() - started, 15, "answers within the call's time, not when the job ends");
+                var result = (JObject)call.Result.response["result"];
+                Assert.IsNull(result["isError"], TextOf(result));
+                var next = (string)JObject.Parse(TextOf(result))["next"];
+                StringAssert.Contains("Call jobs with local_id", next);
+                StringAssert.Contains("Do not generate it again", next);
+                Assert.AreEqual(1, _server.ToolArguments.Where((a, k) => _server.ToolCalls[k] == "model_run").Count(a => !Json.Truthy(a["dry_run"])), "sent once");
+            }
+            finally
+            {
+                AgentTools.CallSeconds = budget;
+            }
+        }
+
         // --- Scene tools ---------------------------------------------------------------------
 
         [Test]

@@ -14,7 +14,7 @@ namespace Scenario.Editor
         [Tooltip("Put each day's results in a dated folder (Assets/Scenario/Image/2026-10-18).")]
         public bool DatedFolders = true;
         [Tooltip("Ask before any request above this many Creative Units.")]
-        public int ConfirmAboveCu = 100;
+        public int ConfirmAboveCu = 1000;
         [Tooltip("Sprites instead of plain textures for images (2D projects).")]
         public bool ImagesAsSprites;
         [Tooltip("Sprite pixels per unit for imported images.")]
@@ -53,8 +53,8 @@ namespace Scenario.Editor
 
         public bool AgentEnabled;
         public int AgentPort = 8791;
-        public int AgentAutoApproveCu = 20;
-        public int AgentSessionBudgetCu = 300;
+        public int AgentAutoApproveCu = 80;
+        public int AgentSessionBudgetCu = 1200;
         public bool AgentCanEditScene = true;
 
         public string ModelFor(string outputType)

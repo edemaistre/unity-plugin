@@ -2,6 +2,7 @@
     "name": "Scenario.Editor.Tests",
     "rootNamespace": "Scenario.Editor.Tests",
     "references": [
+        "Scenario.Runtime",
         "Scenario.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"

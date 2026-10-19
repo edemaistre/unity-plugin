@@ -57,7 +57,7 @@ Meshy Animation's motion is picked by name from its library of about 650 motions
 
 ### Price and Generate
 
-The footer button reads `Generate · 11 CU`: a free price check of exactly this request. It updates when you change anything. It is disabled while the price is being checked, when the form is incomplete, or when spending is off. Above your confirmation threshold (100 CU by default) Unity asks before sending.
+The footer button reads `Generate · 11 CU`: a free price check of exactly this request. It updates when you change anything. It is disabled while the price is being checked, when the form is incomplete, or when spending is off. Above your confirmation threshold (1,000 CU by default) Unity asks before sending.
 
 **Place** decides whether the result is put in the scene or only imported. The line above the button says where it goes and what it will land on, for example "Places on Player (SpriteRenderer)".
 
@@ -153,12 +153,14 @@ For each client, **Copy setup** copies what to paste:
 
 Permissions:
 
-- **Approve paid calls up to (CU)**: 20 by default, per call. 0 asks every time.
-- **Session budget (CU)**: 300 by default, since Unity started.
+- **Approve paid calls up to (CU)**: 80 by default, per call. 0 asks every time.
+- **Session budget (CU)**: 1,200 by default, since Unity started.
 - Anything above either waits for **Approve** or **Deny** in the Agent view, and is refused after two minutes without an answer.
 - **Agents can edit the scene** on or off.
 
 The activity log lists every call: time, client, tool, a short summary, approvals and errors.
+
+The agent can also build walkable worlds: a terrain from a generated heightmap with painted ground, models scattered and grounded, a rigged character turned into a player you control with WASD, Shift, Space and the mouse, and playtests in Play mode. The player uses components you can add by hand too, under **Add Component > Scenario**: Scenario Player, Scenario Follow Camera, Scenario Autopilot and Scenario Frame Recorder.
 
 The agent sees the same catalog, prices and import rules as you. A skill file for agents ships with the package in `Documentation~/agent-skill/SKILL.md`.
 

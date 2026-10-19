@@ -190,12 +190,13 @@ Turn on **Agent** in the window and the editor serves an MCP server named `scena
     <td width="40%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/screens/agent-dark.png"><img alt="The Agent view: server on, client setup buttons, permissions and activity" src="docs/images/screens/agent-light.png"></picture></td>
     <td>
 
-The agent gets two sets of tools:
+The agent gets three sets of tools:
 
 - **Scenario**: find a model, find a motion in Meshy's library, price, generate, run workflows, follow jobs, import, upload.
-- **Scene**: inspect the hierarchy, create and change objects and components, assign materials, set the skybox, save, read the console, and capture the Scene view or the main camera as an image it can look at.
+- **Scene**: inspect the hierarchy, create and change objects and components, size them in meters and sit them on the ground, assign materials, set the skybox, save, read the console, and capture the Scene view or the main camera as an image it can look at.
+- **World**: build a terrain from a generated heightmap with ground materials painted by height and slope, scatter models on it with colliders, turn a rigged and animated character into a third-person player with a follow camera, and playtest in Play mode (the character walks, runs and jumps through waypoints; the result says what it reached and whether it fell) or record frames.
 
-Every scene edit is one Undo step. A paid call above the per-call limit (20 CU by default) or beyond the session budget (300 CU) waits for **Approve** in the window. The activity log lists every call.
+Every scene edit is one Undo step. A paid call above the per-call limit (80 CU by default) or beyond the session budget (1,200 CU) waits for **Approve** in the window. The activity log lists every call.
 
 Example, tested with Claude Code: *"Check that you are signed in, find a sword attack in the motion library, list three image-to-3D models, price a barrel prop, add a cube to the scene and show me the Scene view."* It ran the six steps in 17 seconds without spending. The barrel's price, 120 CU, is above the auto-approve limit, so generating it would wait for approval in Unity.
 
@@ -224,7 +225,7 @@ Debug.Log(string.Join(", ", result.Files)); // Unity asset paths
 - **Price first.** The button reads `Generate · 11 CU`, from a free price check of the exact request. Change anything and the price is checked again.
 - **One click, one paid request.** Each price is used once, and a paid request is never retried.
 - **Uncertain means Unknown.** If the connection drops while a paid request is being sent, the job is marked Unknown and the same request waits until it is matched on Scenario.
-- **Confirmation** above a threshold (100 CU by default, in Settings).
+- **Confirmation** above a threshold (1,000 CU by default, in Settings).
 - **Spending switch** in Settings, or `SCENARIO_NO_SPEND=1` for the whole editor. Price checks, browsing and imports still work.
 - Moderated requests show as Blocked and are never resent.
 

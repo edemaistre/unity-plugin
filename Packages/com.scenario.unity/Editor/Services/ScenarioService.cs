@@ -221,16 +221,32 @@ namespace Scenario.Editor
         public bool Ready => IsSignedIn && !Client.NeedsWorkspace;
         public bool FromEnvironment => Method == AuthMethod.Environment;
 
+        /// <summary>Opens a page in the user's browser. Tests replace it.</summary>
+        internal static Action<string> OpenUrl = Application.OpenURL;
+
         public async Task SignInWithBrowser()
         {
             CancelSignIn();
-            _signIn = new CancellationTokenSource();
+            var signIn = new CancellationTokenSource();
+            _signIn = signIn;
             State = SignInState.SigningIn;
             SignInError = "";
             Emit();
-            var saved = Credentials.Load();
-            var result = await OAuthSignIn.Run(_oauth, url => Application.OpenURL(url), Json.Str(saved.Info, "client_id"), Json.Str(saved.Info, "redirect_uri"),
-                TimeSpan.FromMinutes(5), _signIn.Token);
+            Result<OAuthSession> result;
+            try
+            {
+                var saved = Credentials.Load();
+                // The sign-in resumes on worker threads after its network calls, and Unity opens URLs only from the main thread.
+                result = await OAuthSignIn.Run(_oauth, url => MainThread.Post(() => OpenUrl(url)), Json.Str(saved.Info, "client_id"), Json.Str(saved.Info, "redirect_uri"),
+                    TimeSpan.FromMinutes(5), signIn.Token);
+            }
+            catch (Exception e)
+            {
+                result = Result<OAuthSession>.Fail(ErrorKind.Local, "The sign-in stopped: " + e.Message);
+            }
+            // Canceled, or a newer sign-in started: that one owns the panel now.
+            if (_signIn != signIn) return;
+            _signIn = null;
             if (!result.Ok)
             {
                 State = Client.HasCredentials ? SignInState.SignedIn : SignInState.SignedOut;
@@ -253,6 +269,10 @@ namespace Scenario.Editor
         {
             _signIn?.Cancel();
             _signIn = null;
+            if (State != SignInState.SigningIn) return;
+            State = Client.HasCredentials ? SignInState.SignedIn : SignInState.SignedOut;
+            SignInError = "";
+            Emit();
         }
 
         /// <summary>Checks the key with a free read before saving it.</summary>
